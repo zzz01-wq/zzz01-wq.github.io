@@ -43,3 +43,49 @@
 @media(orientation:landscape) and (min-height:601px){.scene-world{top:10%;bottom:var(--scene-bottom,260px)}.explore-hint{bottom:calc(var(--scene-bottom,260px) + 3px)}}
 @media(orientation:landscape) and (max-height:600px){.scene-world{top:32%;bottom:3%}}
 @media(orientation:portrait) and (max-height:700px){.hotspot{width:44px;min-height:44px;gap:4px;padding:0}.hotspot[data-act="bedroom"]{top:46%}.hotspot[data-act="cat"]{top:73%}.hotspot[data-act="paper"]{left:38%}}
+
+/* Keep the dialogue footprint independent of text length and option count. */
+.game{--dialogue-height:260px}
+.story{height:var(--dialogue-height);min-height:0;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden}
+.story-heading{flex-shrink:0;min-height:22px}
+.story-body{flex:1;min-height:0;max-height:none;overflow-y:auto;scrollbar-gutter:stable;touch-action:pan-y}
+.story p{font-size:17px;line-height:1.9}
+.choices button{font-size:15px;min-height:48px;line-height:1.7}
+#storytype{font-size:14px}
+#save{font-size:11px}
+.places span{font-size:13px}
+.tool>span{font-size:12px}
+#time,.mind-status span{font-size:12px}
+#sanity{font-size:17px}
+#sanity small{font-size:11px}
+.cat-status{font-size:12px}
+.hotspot span{font-size:12px}
+dialog p,dialog li,.archive-link{font-size:16px}
+dialog .meta{font-size:12px}
+.note-modal .note-rules>li,.note-modal .note-page p,.note-modal .note-intro{font-size:16px}
+@media(orientation:portrait){
+ .game{--dialogue-height:clamp(230px,32svh,280px)}
+ .story p{font-size:16px;line-height:1.85}
+ .choices button{font-size:15px}
+ .cat-status{font-size:11px}
+ .story-body{max-height:none}
+}
+@media(orientation:portrait) and (max-height:700px){
+ .game{--dialogue-height:210px}
+ .story p{font-size:16px}
+ .choices button{font-size:14px}
+}
+@media(max-width:360px){
+ .cat-status{font-size:10px}
+ #care{margin-left:2px}
+ .places span{font-size:12px}
+ .choices button{font-size:14px}
+}
+@media(orientation:landscape) and (max-height:600px){
+ .game{--dialogue-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 88px)}
+ .story-body{max-height:none}
+ .story p{font-size:15px;line-height:1.85}
+ .choices button{font-size:14px;min-height:46px}
+ .places span{font-size:12px}
+ .cat-status{font-size:10px}
+}

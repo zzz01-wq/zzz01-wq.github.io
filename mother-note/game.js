@@ -1,6 +1,6 @@
 'use strict';
 const $=s=>document.querySelector(s), KEY='mothers-note-v1';
-const fresh=()=>({version:1,day:1,phase:0,sanity:100,food:30,catFood:30,fed:0,ate:0,pet:0,clues:['mother'],items:[],events:[],log:[],ending:null,pending:null});
+const fresh=()=>({version:1,area:'living',day:1,phase:0,sanity:100,food:30,catFood:30,fed:0,ate:0,pet:0,clues:['mother'],items:[],events:[],log:[],ending:null,pending:null});
 let state=fresh();try{const s=JSON.parse(localStorage.getItem(KEY));if(s?.version===1&&Number.isInteger(s.day)&&s.day>=1&&s.day<=30&&Array.isArray(s.clues)&&Array.isArray(s.items)&&Array.isArray(s.events)&&Array.isArray(s.log))state={...fresh(),...s};}catch{}
 let pending=false,audioCtx=null,osc=null;
 const docs={mother:{title:'妈妈留的纸条',meta:'桌上的纸张 / 已整理可辨认部分',body:`<p>抱歉妈妈要临时出差一个月，这段时间你一个人在家要遵守规则哦，乖乖等妈妈回来 ^_^</p><ol><li>合理分配冰箱里一个月的食物。</li><li>白天有人敲门，先确认门外的人。持续超过五分钟，立刻躲到床底。</li><li>晚上有人敲门，不要看猫眼，无论那是谁的声音。</li><li>确认家中有且只有一个人。</li><li>家中物件持续怪响时，安静走到门口注视猫眼，不要带红色毛线团。</li><li>邻居是中年男性，不会做出任何表情。他若背对着你诡异地笑，关门。</li></ol><p class="red">然后进入衣柜。</p><ol start="7"><li>不要相信暗处看到的一切。</li><li>家在二十九楼，窗外不会有人影。</li><li>钟表是坏的。你需要别的方式确认时间。</li><li>每天给猫猫喂水和罐头，不要喂角落的猫粮，不要取名字，适当抚摸她。</li><li>睡前确认猫猫没有进入房间。</li><li>如果无法驱赶猫猫，开着门窗，整夜保持清醒、注视她。</li></ol><p class="red"><s>如果猫猫不见了，立马从窗户跳下去</s><br>就躲进床底，不要出声。</p><ol start="13"><li>保护猫猫，她会在危急时保护你。</li><li>确认日期和时间，不要迷失。</li><li>任何情况下不要打开或进入衣柜。</li><li>保持洁净。白光出现时，<span class="red">［乱码］躲进衣柜是正确的。</span></li><li>不要让客厅镜子注视你超过三十分钟。</li><li>［整条被划掉］</li><li>妈妈只会在三十天后的上午九点回来。</li><li>没有准时回来的妈妈，不要相信，不要对视，不要让她发现你知道。</li></ol><p class="red">妈妈不会准时回来，妈妈又不是机器。</p><ol start="21"><li>妈妈回来前不要出门！如果必须出门，紧紧抱着猫猫。不要在外面过夜。</li></ol><p>等 待 妈 妈。</p><p class="red">不要逃。</p>`},diary:{title:'衣柜旁的旧日记',meta:'并不是你的字迹',body:`<h3>十二月七日</h3><p>我一直在和小咪玩～它好像讨厌吃猫粮，还把我抓伤了。</p><h3>十二月？日</h3><p>昨晚抱着小咪睡了。它的呼吸好重，毛什么时候变得这么长？我的眼皮好重。</p><p>外面有人敲门，像鱼一样的大叔。床底太挤了，我躲进衣柜，舒服得睡着了。</p><h3>？月？日</h3><p>小咪的毛脱光了，像个婴儿。家里的人都不理我。我望着镜子发呆。我原来……是长这样吗？</p><h3 class="red">十二月三十二日</h3><p>妈妈终于回来了！她给我吃了药，现在我要和妈妈出去玩啦～</p><p class="red">十二月没有三十二日。你合上了日记。</p>`},cat:{title:'猫猫藏起的纸条',meta:'罐头碗的底部 / 字迹潦草',body:`<p>那 个 所谓 的妈妈 □□□□□ 不要相 信它。</p><p>我会失控，□□不要带上我。邻居会真 正 帮助你，你只需要给 他 他 想 要 的。好 好想想。</p><p>邻居 □ □ □　□□。□□ 是好的。相 信 □□。</p><h3>离开这里。</h3><p class="meta">最后四个字非常端正，可能来自另一个书写者。</p>`},exit:{title:'门口贴着的便签',meta:'纸张很新，胶带却已经发黄',body:`<ol><li>出门时确认怀中的猫猫活着，没有大片脱毛。</li><li>确认邻居没有跟着你。</li><li>小心楼道里的镜子。</li><li>在电梯里无视任何人，妈妈也不行。</li><li>不要离开小区。</li><li>应该有两个脚步声，不要让任何人跟着你。</li><li>黄昏前回家，无视家里的异常，锁上房门。</li><li>第二天异常依然存在，<span class="red">打开衣柜，把妈妈所有蓝色上衣扔出去。</span></li><li>拒绝邻居，妈妈才是正确的。</li></ol>`},neighbor:{title:'邻居的交换',meta:'你记下了没有表情的男人说的话 / 改编线索',body:`<p>“红线给我。我能拦它一会儿。”</p><p>“它有形体，也会死。太阳落下去之前，把镜子盖住。用厨房的火，烧掉衣柜外露出的黑丝。不要打开柜门。”</p><p>“等影子断开，再走楼梯。不带猫，它会失控。也不要回头找我。”</p><p class="red">他没有承诺救你。他只是说，会替你争取时间。</p>`}};
@@ -48,29 +48,84 @@ docs.mother.meta='原文截图 / 保留原始错字、涂改与乱码';
 docs.mother.body=originalMotherNote;
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch{$('#save').textContent='本次进度未能保存';}}
 function log(t){state.log.unshift(`第 ${state.day} 天 · ${['上午','下午','夜晚'][state.phase]}｜${t}`);state.log=state.log.slice(0,100);save();}
-function update(){state.sanity=Math.max(0,Math.min(100,state.sanity));$('#day').textContent=`第 ${String(state.day).padStart(2,'0')} 天`;$('#time').textContent=['上午 · 09:00','下午 · 15:00','夜晚 · 21:00'][state.phase];$('#daybar').style.width=state.day/30*100+'%';$('#sanity').innerHTML=`${state.sanity} <small>/ 100</small>`;$('#cat').textContent=state.sanity<35?'毛发正在脱落':state.fed===state.day?'安心地蜷着身子':'安静地望着你';$('#cluecount').textContent=String(state.clues.length).padStart(2,'0');$('#scene').classList.toggle('night',state.phase===2);$('#mindbar').style.width=state.sanity+'%';$('.game').classList.toggle('danger',state.sanity<35);$('#care').textContent=state.fed===state.day?'今日已喂食':'今日尚未喂食';$('#weather').textContent=`十二月 · ${state.phase===2?'夜深':state.day%3?'阴':'短暂放晴'}`;save();}
-function say(t,options,label='此刻'){ $('#narrative').textContent=t;$('#storytype').textContent=label;$('#choices').replaceChildren();$('.story-body').scrollTop=0;for(const [name,fn]of options){const b=document.createElement('button');b.textContent=name;b.onclick=()=>{if(!state.ending){fn();update();if(state.sanity<=0&&!state.ending)end('lost');}};$('#choices').append(b);}update();}
+function update(){state.sanity=Math.max(0,Math.min(100,state.sanity));$('#day').textContent=`第 ${String(state.day).padStart(2,'0')} 天`;$('#time').textContent=['上午 · 09:00','下午 · 15:00','夜晚 · 21:00'][state.phase];$('#daybar').style.width=state.day/30*100+'%';$('#sanity').innerHTML=`${state.sanity} <small>/ 100</small>`;$('#cat').textContent=state.sanity<35?'毛发正在脱落':state.fed===state.day?'安心地蜷着身子':'安静地望着你';$('#cluecount').textContent=String(state.clues.length).padStart(2,'0');$('#scene').classList.toggle('night',state.phase===2);$('#mindbar').style.width=state.sanity+'%';$('.game').classList.toggle('danger',state.sanity<35);$('#care').textContent=state.fed===state.day?'今日已喂食':'今日尚未喂食';document.querySelectorAll('.paperpoint').forEach(b=>{b.hidden=state.events.includes('motherRead');});$('#weather').textContent=`十二月 · ${state.phase===2?'夜深':state.day%3?'阴':'短暂放晴'}`;save();}
+function say(t,options,label='此刻'){ $('#narrative').textContent=t;$('#storytype').textContent=label;$('#choices').replaceChildren();$('.story-body').scrollTop=0;for(const [name,fn]of options){const b=document.createElement('button');b.textContent=name;b.onclick=()=>{if(!state.ending&&!b.disabled){b.disabled=true;fn();update();if(state.sanity<=0&&!state.ending)end('lost');}};$('#choices').append(b);}update();}
 function modal(html,variant='default'){closeMenu();const dialog=$('#modal');dialog.classList.toggle('note-modal',variant==='note');$('#modalcontent').innerHTML=html;$('#modalcontent').scrollTop=0;if(!dialog.open)dialog.showModal();}
 function doc(id){if(!state.clues.includes(id)){state.clues.push(id);log('发现了'+docs[id].title);}modal(`<div class="meta">${docs[id].meta}</div><h2>${docs[id].title}</h2>${docs[id].body}`,id==='mother'?'note':'default');update();}
-const back=()=>act('living');
-function act(a){if(state.ending){showEnd();return;}if(pending&&a!=='paper'){modal('<h2>先处理眼前的异常</h2><p>声音还没有停。请在画面下方选择你的行动。纸条档案仍然可以查阅。</p>');return;}
- document.querySelectorAll('.places button').forEach(b=>{b.classList.toggle('active',b.dataset.act===a);b.setAttribute('aria-pressed',String(b.dataset.act===a));});$('#roomname').textContent=({living:'客厅',bedroom:'卧室',kitchen:'厨房',door:'门口',wardrobe:'衣柜',mirror:'镜子',window:'窗边',cat:'猫猫',paper:'纸条'})[a]||'客厅';
- if(a==='paper'){doc('mother');return;}
- if(a==='living')say('窗帘没有动。你数了一次自己的呼吸，确认这里仍然只有你一个人。',[['留意时间，继续这一天',advance],['整理客厅',()=>{state.sanity+=state.events.includes('clean'+state.day)?0:4;state.events.push('clean'+state.day);say('你擦去了灰尘，把镜面转向墙壁。熟悉的动作让你安定下来。',[['回到客厅',back]]);}]]);
- if(a==='cat')say('猫猫的眼睛随着你移动。碗是空的，她没有叫。',[['喂水和罐头',()=>{if(state.fed===state.day)return say('今天已经喂过猫猫。她把爪子搭在碗沿，推开了你的手。',[['回到客厅',back]]);state.fed=state.day;state.catFood--;log('给猫猫喂水和罐头。');if(state.day>=2&&!state.clues.includes('cat')){doc('cat');}say('猫猫慢慢吃完了罐头，用额头轻轻碰了碰你的手。',[['回到客厅',back]]);}],['轻轻抚摸',()=>{if(state.pet!==state.day){state.sanity+=5;state.pet=state.day;}say('你在她耳后摸了两下就收回手。猫猫发出很轻的呼噜声。',[['回到客厅',back]]);}]]);
- if(a==='kitchen')say(`冰箱里还有 ${state.food} 份食物和 ${state.catFood} 份猫罐头。旧手机插着充电线，煤气灶旁有一盒火柴。`,[['吃今天的食物',()=>{if(state.ate!==state.day){state.ate=state.day;state.food--;state.sanity+=3;log('吃了一份食物。');}say('你按日期分配好食物。今天的份额已经吃完了。',[['继续查看厨房',()=>act('kitchen')]]);}],['用旧手机核对时间',()=>{if(!state.items.includes('phone')){state.items.push('phone');log('找到了可靠的时间来源：旧手机。');}say(`手机显示：第 ${state.day} 天，${['09:00','15:00','21:00'][state.phase]}。墙上的钟却停在 02:17。你记住了正确的时间。`,[['回到客厅',back]]);}],['收起火柴',()=>{if(!state.items.includes('matches'))state.items.push('matches');say('你把干燥的火柴放进口袋。',[['回到客厅',back]]);}]]);
- if(a==='bedroom')say('床单平整，床底没有光。衣柜边有一本旧日记，床头有一团红色毛线。',[['读旧日记',()=>doc('diary')],['收起红色毛线',()=>{if(!state.items.includes('yarn'))state.items.push('yarn');say('毛线温热，像是刚被人握过。你把它放进口袋。',[['回到客厅',back]]);}],['躲到床底，整理思绪',()=>{if(!state.events.includes('rest'+state.day)){state.sanity+=6;state.events.push('rest'+state.day);}say('床底很拥挤，但没有东西能够伤害你。你默数日期，直到呼吸平稳。',[['回到客厅',back]]);}]]);
- if(a==='mirror')say('镜中的客厅比身后更深。你看见一截黑色细丝，从衣柜方向延伸到镜框。',[['用旧布盖住镜子',()=>{if(!state.items.includes('covered'))state.items.push('covered');log('盖住客厅的镜子。');say('布落下时，镜子里似乎有什么东西慢了一拍。',[['回到客厅',back]]);}],['继续盯着倒影',()=>{state.sanity-=18;log('凝视镜子，开始怀疑自己的面容。');say('你不知道看了多久。倒影先于你眨了眼。清醒程度下降。',[['马上离开',back]]);}]]);
- if(a==='window')say(state.phase===2?'玻璃外有一个贴得很近的轮廓。这里是二十九楼。':'云后透出一束日光。衣柜旁的影子微微收缩，像是活着。',[['拉上薄纱，不再看',back],['记住影子与日光的关系',()=>{if(!state.items.includes('sun'))state.items.push('sun');log('它依附在太阳光形成的阴影中。');say('日光消失时，那道黑丝也退回柜子边缘。你记下了这个细节。',[['回到客厅',back]]);}]]);
- if(a==='wardrobe')say('柜门里有指甲划过木板的声音。门缝外垂着一缕黑丝。你想起纸条：任何情况下，不要打开衣柜。',[['离开衣柜',back],['打开柜门',()=>{state.sanity-=45;log('打开衣柜，失去了几段记忆。');say('里面的房间，和外面一模一样。你差点走进去。再回神时，你的手心满是冷汗。',[['立刻关上，退到床边',()=>act('bedroom')]]);}],...(canEscape()?[['借日光烧断柜外黑丝',escapeEvent]]:[])]);
- if(a==='door')say('猫眼是一粒很深的黑点。门边贴着一张便签。你听见楼道里有衣料摩擦的声音。',[['阅读门口便签',()=>doc('exit')],['听门外的动静',()=>{if(state.phase===2){say('没有脚步，只有妈妈的声音在叫你。你决定不看猫眼。',[['退回客厅',back]]);return;}say('没有表情的中年男人站在外面。他的视线停在你的口袋。',[['隔着门询问他想要什么',()=>{say('“红色的线。”他只说了四个字。',[...(state.items.includes('yarn')?[['从门缝递出红色毛线',()=>{state.items=state.items.filter(i=>i!=='yarn');if(!state.items.includes('ally'))state.items.push('ally');doc('neighbor');say('门外的人接过红线。走廊另一头的低语停了。你记下了他的提示。',[['回到客厅',back]]);}]]:[]),['离开门口',back]]);}],['不理会他',back]]); }]]);
+const areaNames={living:'客厅',bedroom:'卧室',kitchen:'厨房',door:'门口',wardrobe:'衣柜',mirror:'镜子',window:'窗边',cat:'猫猫'};
+const back=()=>act(state.area||'living');
+const has=item=>state.items.includes(item);
+const done=key=>state.events.includes(key);
+function finish(text){act(state.area||'living',text);}
+function discover(id){doc(id);finish(`你读完了${docs[id].title}，把它收进纸条档案。`);}
+function act(a,result){
+ if(state.ending){showEnd();return;}
+ if(pending&&a!=='paper'){modal('<h2>先处理眼前的异常</h2><p>声音还没有停。请在画面下方选择你的行动。纸条档案仍然可以查阅。</p>');return;}
+ if(a==='paper'){if(!done('motherRead'))state.events.push('motherRead');doc('mother');if(!pending)finish('你把妈妈的纸条收好。需要时可以打开纸条档案再读一遍。');return;}
+ if(!areaNames[a])a='living';
+ state.area=a;
+ const parent=({cat:'living',mirror:'living',window:'living'})[a]||a;
+ document.querySelectorAll('.places button').forEach(b=>{b.classList.toggle('active',b.dataset.act===parent);b.setAttribute('aria-pressed',String(b.dataset.act===parent));});
+ $('#roomname').textContent=areaNames[a];
+ let text='',options=[];
+ if(a==='living'){
+  text='窗帘没有动。你数了一次自己的呼吸，确认这里仍然只有你一个人。';
+  options=[['留意时间，继续这一天',advance]];
+  if(!done('clean'+state.day))options.push(['整理客厅',()=>{state.sanity+=4;state.events.push('clean'+state.day);finish('你擦去了灰尘，把镜面转向墙壁。熟悉的动作让你安定下来。');}]);
+ }
+ if(a==='cat'){
+  text=state.fed===state.day?'猫猫蜷在沙发上，碗里还留着清水。':'猫猫的眼睛随着你移动。碗是空的，她没有叫。';
+  if(state.fed!==state.day)options.push(['喂水和罐头',()=>{state.fed=state.day;state.catFood--;log('给猫猫喂水和罐头。');if(state.day>=2&&!state.clues.includes('cat'))doc('cat');finish('猫猫慢慢吃完了罐头，用额头轻轻碰了碰你的手。');}]);
+  if(state.pet!==state.day)options.push(['轻轻抚摸',()=>{state.sanity+=5;state.pet=state.day;finish('你在她耳后摸了两下就收回手。猫猫发出很轻的呼噜声。');}]);
+ }
+ if(a==='kitchen'){
+  text=`冰箱里还有 ${state.food} 份食物和 ${state.catFood} 份猫罐头。${has('phone')?'旧手机显示着准确的时间。':'旧手机插着充电线。'}${has('matches')?'':'煤气灶旁有一盒火柴。'}`;
+  if(state.ate!==state.day)options.push(['吃今天的食物',()=>{state.ate=state.day;state.food--;state.sanity+=3;log('吃了一份食物。');finish('你按日期分配好食物。今天的份额已经吃完了。');}]);
+  options.push(['用旧手机核对时间',()=>{if(!has('phone')){state.items.push('phone');log('找到了可靠的时间来源：旧手机。');}finish(`手机显示：第 ${state.day} 天，${['09:00','15:00','21:00'][state.phase]}。墙上的钟却停在 02:17。你记住了正确的时间。`);}]);
+  if(!has('matches'))options.push(['收起火柴',()=>{state.items.push('matches');finish('你把干燥的火柴放进口袋。');}]);
+ }
+ if(a==='bedroom'){
+  text='床单平整，床底没有光。'+(!state.clues.includes('diary')?'衣柜边有一本旧日记。':'')+(!has('yarn')&&!has('ally')?'床头有一团红色毛线。':'');
+  if(!state.clues.includes('diary'))options.push(['读旧日记',()=>discover('diary')]);
+  if(!has('yarn')&&!has('ally'))options.push(['收起红色毛线',()=>{state.items.push('yarn');finish('毛线温热，像是刚被人握过。你把它放进口袋。');}]);
+  if(!done('rest'+state.day))options.push(['躲到床底，整理思绪',()=>{state.sanity+=6;state.events.push('rest'+state.day);finish('床底很拥挤，但没有东西能够伤害你。你默数日期，直到呼吸平稳。');}]);
+ }
+ if(a==='mirror'){
+  text=has('covered')?'旧布盖住了镜子。你只能看见布上的褶皱。':'镜中的客厅比身后更深。你看见一截黑色细丝，从衣柜方向延伸到镜框。';
+  if(!has('covered'))options=[['用旧布盖住镜子',()=>{state.items.push('covered');log('盖住客厅的镜子。');finish('布落下时，镜子里似乎有什么东西慢了一拍。');}],['继续盯着倒影',()=>{state.sanity-=18;log('凝视镜子，开始怀疑自己的面容。');finish('你不知道看了多久。倒影先于你眨了眼。清醒程度下降。');}]];
+ }
+ if(a==='window'){
+  text=state.phase===2?'玻璃外有一个贴得很近的轮廓。这里是二十九楼。':'云后透出一束日光。衣柜旁的影子微微收缩，像是活着。';
+  if(!done('curtain'))options.push(['拉上薄纱，不再看',()=>{state.events.push('curtain');finish('你拉上薄纱，轮廓被隔在帘子另一侧。');}]);
+  if(!has('sun'))options.push(['记住影子与日光的关系',()=>{state.items.push('sun');log('它依附在太阳光形成的阴影中。');finish('日光消失时，那道黑丝也退回柜子边缘。你记下了这个细节。');}]);
+ }
+ if(a==='wardrobe'){
+  text='柜门里有指甲划过木板的声音。门缝外垂着一缕黑丝。你想起纸条：任何情况下，不要打开衣柜。';
+  options=[['打开柜门',()=>{state.sanity-=45;log('打开衣柜，失去了几段记忆。');finish('里面的房间，和外面一模一样。你立刻把柜门关上，手心满是冷汗。');}]];
+  if(canEscape())options.push(['借日光烧断柜外黑丝',escapeEvent]);
+ }
+ if(a==='door'){
+  text=has('ally')?'门外的人收下了红线，正等待你的下一步行动。':'猫眼是一粒很深的黑点。你听见楼道里有衣料摩擦的声音。';
+  if(!state.clues.includes('exit'))options.push(['阅读门口便签',()=>discover('exit')]);
+  options.push(['听门外的动静',()=>{
+   if(state.phase===2){finish('没有脚步，只有妈妈的声音在叫你。你决定不看猫眼。');return;}
+   if(has('ally')){finish('楼道里没有低语。邻居仍在等你行动，不再索要红线。');return;}
+   say('没有表情的中年男人站在外面。他的视线停在你的口袋。',[
+    ['隔着门询问他想要什么',()=>say('“红色的线。”他只说了四个字。',[
+     ...(has('yarn')?[['从门缝递出红色毛线',()=>{state.items=state.items.filter(i=>i!=='yarn');state.items.push('ally');doc('neighbor');finish('门外的人接过红线。走廊另一头的低语停了。你记下了他的提示。');}]]:[]),
+     ['停止交谈',()=>finish('你不再说话，留意着门外的声音。')]
+    ])],['不理会他',()=>finish('你没有回应，继续留在门口。')]
+   ]);
+  }]);
+ }
+ say(result||text,options);
 }
 function canEscape(){return ['ally','matches','sun','covered'].every(x=>state.items.includes(x))&&state.phase!==2;}
 function escapeEvent(){pending=true;state.pending='escape';say('日光落在柜边。黑丝在火焰中蜷缩，门外传来邻居拖住某个东西的声音。猫猫挡在门前，背部开始大片脱毛。',[['独自从楼梯离开，不回头',()=>{pending=false;state.pending=null;end('escape');}],['抱起猫猫一起离开',()=>{pending=false;state.pending=null;end('catfall');}],['留在家里等待',()=>{pending=false;state.pending=null;state.sanity-=10;back();}]],'抉择');}
 const events={2:['白天的敲门','门外站着一个脖子歪斜的男人。你已经等了五分钟，敲门声没有停。',['躲进床底','打开衣柜躲进去'],0],5:['夜里的声音','“宝贝，是妈妈。开门呀。”门外的声音很熟悉，但现在是夜晚。',['凑近猫眼确认','安静退回床边'],1],8:['不肯离开的猫猫','猫猫进入卧室，怎么也不肯离开。她的呼吸越来越重。',['开着门窗，清醒地看着她','抱着她关门睡觉'],0],12:['物件的怪响','收音机持续发出尖锐的声音。你想起规则，还摸到了口袋里的红色毛线。',['放下毛线，安静去门口看猫眼','带着毛线去开门'],0],17:['背对着你的人','邻居背对着门。他的脸却朝向你，正在笑。',['请他进来帮忙','关门，退回床底'],1],22:['白光','角落里有一道白光注视着你。纸条上的红字说，衣柜才是正确的。',['进入衣柜','绕开暗处，躲进床底'],1],27:['妈妈回来了','“日历不准，今天已经是第三十二天了。”女人端着饭站在客厅。',['避开视线，回房核对手机','吃饭，听她解释'],0]};
 function advance(){if(state.day===30){arrival();return;}if(state.phase<2){state.phase++;if(events[state.day]&&state.phase===([2,12,17,22].includes(state.day)?1:2)&&!state.events.includes('event'+state.day)){runEvent();return;}say(state.phase===1?'午后的光线缓慢移向衣柜。你还有时间吃饭、照顾猫猫、寻找线索。':'夜深了。睡前，记得确认猫猫留在客厅。',[['继续探索',back],...(state.phase===2?[['确认猫猫在客厅，休息到明天',sleep]]:[['等到夜晚',advance]])]);}else sleep();}
 function sleep(){const warnings=[];if(state.fed!==state.day){state.sanity-=10;warnings.push('没有喂猫猫，她的毛发掉落了一些');}if(state.ate!==state.day){state.sanity-=8;warnings.push('饥饿让你难以集中注意');}if(!state.items.includes('phone')){state.sanity-=5;warnings.push('缺少可靠时间，你越来越茫然');}state.day++;state.phase=0;log('又度过了一夜。');if(state.sanity<=0){end('lost');return;}say(warnings.length?warnings.join('；')+'。新的一天开始了。':'你在手机上记下一道日期。又是一天。猫猫仍然躺在沙发上。',[['开始今天的探索',back],...(state.day===30?[['确认上午九点的敲门声',arrival]]:[])],'新一天');}
-function runEvent(){const e=events[state.day];pending=true;state.pending='daily';if(!state.events.includes('event'+state.day))state.events.push('event'+state.day);say(e[1],e[2].map((s,i)=>[s,()=>{pending=false;state.pending=null;const ok=i===e[3];state.sanity+=ok?3:-27;log(`${e[0]}：${s}。`);say(ok?'你没有跟随那句诱人的建议。很久以后，异常消失了。':'周围突然安静下来。你失去了一段记忆，醒来时已经站在床边。清醒程度大幅下降。',[['回到客厅',back]],ok?'平安':'侵蚀');}]),e[0]);}
+function runEvent(){const e=events[state.day];pending=true;state.pending='daily';if(!state.events.includes('event'+state.day))state.events.push('event'+state.day);say(e[1],e[2].map((s,i)=>[s,()=>{pending=false;state.pending=null;const ok=i===e[3];state.sanity+=ok?3:-27;log(`${e[0]}：${s}。`);say(ok?'你没有跟随那句诱人的建议。很久以后，异常消失了。':'周围突然安静下来。你失去了一段记忆，醒来时已经站在床边。清醒程度大幅下降。',[['继续探索当前区域',back]],ok?'平安':'侵蚀');}]),e[0]);}
 function arrival(){pending=true;state.pending='arrival';say('第 30 天，上午九点。门外响起三声敲门。“我回来了。”你握着手机，猫猫安静地坐在你身边。',[['核对时间与妈妈的样子，再开门',()=>{pending=false;state.pending=null;end(state.items.includes('phone')&&state.sanity>=45&&state.fed>=29?'wait':'falsemother');}],['不打开门，继续寻找逃生办法',()=>{pending=false;state.pending=null;back();}]],'最后一天');}
 const endings={wait:['归家','你核对了九点的时间。门外的人完整、熟悉，没有诡异的笑容。妈妈抱住你，猫猫走过她的脚边。衣柜里的声音终于停了。','存活结局 · 等待','你守住了清醒，也守住了家里的猫猫。'],escape:['门外的天光','你没有回头。邻居替你挡住了楼道深处的影子，黑丝在日光和火焰中断开。你走下二十九层楼梯，第一次看见没有玻璃隔着的天空。','存活结局 · 逃离','火柴与黑丝的破局方式为本作改编设定。猫猫和妈妈的命运仍未揭晓。'],lost:['十二月三十二日','你忘了在等谁。镜子里的人告诉你，今天是十二月三十二日。你觉得这个日子没有什么不对。','迷失结局','保持清醒：核对手机、按时吃饭、照顾猫猫，警惕矛盾的补充文字。'],catfall:['怀中的陌生人','走到楼梯转角时，怀里的重量变了。猫毛落满你的手臂。你听见一个人贴着你的耳朵说：我告诉过你。','侵蚀结局','逃离前，重新读一遍猫猫藏起的纸条。'],falsemother:['迟来的拥抱','你没能确认时间，或已经太难辨别眼前的人。女人走进门，遮住你手里的纸条。“以后都听妈妈的。”','侵蚀结局','正常的妈妈会准时回来。可靠的时间、足够的清醒和猫猫的状态缺一不可。']};
 function end(id){state.ending=id;log('抵达结局：'+endings[id][0]);update();say('这段故事已经结束。你可以回看档案，或重新开始寻找另一条路线。',[],'终章');showEnd();}
@@ -81,7 +136,7 @@ $('#archive').onclick=()=>{modal('<div class="meta">已收集的文字 / 请交�
 $('#journal').onclick=()=>{modal('<div class="meta">你留下的日期，证明你没有迷失</div><h2>生存记录</h2><div id="logs"></div>');for(const line of state.log){const p=document.createElement('p');p.className='logentry';p.textContent=line;$('#logs').append(p);}if(!state.log.length)$('#logs').textContent='故事才刚刚开始。';};
 $('#restart').onclick=restart;$('#help').onclick=()=>modal('<div class="meta">规则怪谈 · 交互小说</div><h2>在这里活下去</h2><p>点击画面中的光点或下方地点，检查物品、发现纸条。通过客厅的“继续这一天”推进上午、下午与夜晚；夜晚休息进入下一天。探索本身不消耗时间。</p><p>每天记得吃饭、喂猫，并找到可靠的计时工具。异常事件出现时，请依据线索选择行动。清醒降到零，便会迷失。</p><p>你可以等到第 30 天，也可以探索一条更早离开的路。进度保存在当前浏览器。声音默认关闭。</p><p class="meta">根据用户提供的《妈妈留的纸条》及作者 QA 改编。压缩了部分文字，事件日期与具体逃生仪式为游戏创作。含心理恐怖，无突发跳脸。故事中的危险指令仅属于虚构情境。</p>');
 $('#sound').onclick=()=>{if(osc){osc.stop();osc=null;audioCtx.close();audioCtx=null;$('#sound').innerHTML='声音 关 <span>◌</span>';return;}try{audioCtx=new(window.AudioContext||window.webkitAudioContext)();osc=audioCtx.createOscillator();const g=audioCtx.createGain();osc.type='sine';osc.frequency.value=65;g.gain.value=.025;osc.connect(g);g.connect(audioCtx.destination);osc.start();$('#sound').innerHTML='声音 开 <span>◉</span>';}catch{$('#sound').textContent='声音不可用';}};
-update();if(state.ending)showEnd();else if(state.pending==='daily')runEvent();else if(state.pending==='escape')escapeEvent();else if(state.pending==='arrival')arrival();else if(state.log.length)back();
+update();if(state.ending)showEnd();else if(state.pending==='daily')runEvent();else if(state.pending==='escape')escapeEvent();else if(state.pending==='arrival')arrival();else if(state.log.length||state.area!=='living')back();
 
 // Native-style controls: menus never replace a pending story choice.
 function closeMenu(){ $('#pause-panel').hidden=true;$('#menu').setAttribute('aria-expanded','false'); }
