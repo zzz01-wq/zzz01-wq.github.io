@@ -13,11 +13,21 @@ h1{font-size:clamp(42px,3.6vw,54px);white-space:nowrap}#game.pointer-focused:foc
 </style>
 <style>
 [hidden]{display:none!important}.run-switch{display:flex;gap:5px;margin-bottom:14px}.run-switch button{flex:1;border:1px solid var(--line);border-radius:9px;background:transparent;padding:8px;font-size:13px}.run-switch button[aria-pressed=true]{background:#7563cf;color:white;border-color:#7563cf}.growth{margin-top:16px}.growth-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px}.growth progress{width:100%;height:7px}.growth progress::-webkit-progress-value{background:#9580dd;border:0}.growth small{display:block;color:var(--muted);font-size:11px;margin-top:7px}.loadout{margin-top:20px;border-top:1px solid var(--line);padding-top:14px}.loadout-header{display:flex;justify-content:space-between;align-items:center;font-size:14px}.loadout-header small{color:var(--muted)}#skill-list{margin:9px 0 0;display:grid;gap:7px}#skill-list p{font-size:12px;color:var(--muted);margin:4px 0;line-height:1.7}.owned-skill{border:0;border-bottom:1px solid #ded9ed;background:none;padding:7px 0;text-align:left;font-size:12px;display:flex;justify-content:space-between;gap:8px}.owned-skill span{color:var(--purple)}#reroll{width:100%;margin-top:10px;border:1px solid #b6a6df;border-radius:10px;background:#fff6;padding:9px;font-size:12px}#upgrade-dialog{width:720px;max-width:calc(100vw - 32px);box-sizing:border-box;padding:28px}#upgrade-dialog>p{color:var(--muted);font-size:13px}#upgrade-options{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:23px 0 12px}.skill-option{display:flex;flex-direction:column;align-items:flex-start;text-align:left;border:1px solid #d3cae9;background:#ffffff90;border-radius:15px;padding:18px 15px;min-height:210px;gap:12px}.skill-option:hover{border-color:#8970d2;background:white;transform:translateY(-3px)}.skill-option small{color:var(--purple);font-size:11px}.skill-option b{font-size:19px}.skill-option .effect{font-size:13px;line-height:1.8}.skill-option .previous{margin-top:auto;font-size:11px;color:var(--muted);line-height:1.6}#upgrade-dialog[open]{animation:choice-in .2s ease-out}@keyframes choice-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@media(max-width:1100px){.loadout{grid-column:1/-1;margin-top:8px}#skill-list{grid-template-columns:repeat(3,1fr);gap:8px 15px}#reroll{grid-column:1/-1}}@media(max-width:640px){.intro{flex-wrap:wrap}.intro .run-switch{order:0}.intro .scores{order:1}.intro .next{order:2}.intro .growth{order:3}.run-switch{width:100%;margin-bottom:0}.run-switch button{padding:6px}.growth{width:100%;margin-top:2px}.growth-label{font-size:11px;margin-bottom:4px}.growth small{display:none}.loadout{padding-top:10px}#skill-list{grid-template-columns:repeat(2,1fr)}#upgrade-dialog{padding:20px;max-height:90svh;overflow:auto}#upgrade-dialog h2{font-size:25px}#upgrade-options{grid-template-columns:1fr;gap:9px;margin-top:15px}.skill-option{min-height:0;padding:12px 15px;gap:5px}.skill-option b{font-size:17px}.skill-option .effect{font-size:12px}}@media(prefers-reduced-motion:reduce){#upgrade-dialog[open]{animation:none}.skill-option:hover{transform:none}}
+</style>
+<style>
+#sound[aria-pressed=false]{color:#d56779}#sound[aria-pressed=false] svg{opacity:1}#sound .sound-off{display:none}#sound[aria-pressed=false] .sound-on{display:none}#sound[aria-pressed=false] .sound-off{display:block}
+#save-dialog{width:min(620px,calc(100vw - 32px));max-width:calc(100vw - 32px);padding:28px;text-align:center}#save-dialog>small{color:var(--purple);font-weight:600}#save-dialog-copy{margin:0;color:var(--muted);font-size:14px}#save-slots{display:grid;gap:10px;margin:22px 0 2px;text-align:left}.save-slot{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;align-items:center;border:1px solid var(--line);border-radius:15px;padding:14px 15px;background:#ffffff55}.save-slot[data-filled=true]{border-color:#c7b8ef;background:#ffffff88}.save-slot-label{color:var(--purple);font-size:13px;font-weight:700}.save-slot-meta{color:var(--muted);font-size:12px;line-height:1.5}.save-slot button{grid-column:2;grid-row:1 / span 2;border:1px solid #8975d4;border-radius:11px;background:#f5f1ff;color:var(--purple);padding:9px 12px;font-size:13px;white-space:nowrap}.save-slot button:hover{background:#ebe5ff}.save-slot button.primary{background:linear-gradient(170deg,#a18bed,#7762d1);color:#fff;box-shadow:inset 0 1px 1px #ffffff61}.save-slot button.primary:hover{background:linear-gradient(170deg,#ad99f4,#806bdd)}.save-slot button:disabled{border-color:var(--line);background:#efedf6;color:#aaa6b7}
+</style><style>
+#confirm-dialog{width:min(420px,calc(100vw - 32px));max-width:calc(100vw - 32px);padding:28px;text-align:center}#confirm-dialog>small{color:var(--purple);font-weight:600}#confirm-dialog .confirm-mark{width:60px;height:60px;display:grid;place-items:center;margin:0 auto 10px;border-radius:20px;background:#ebe5ff;color:var(--purple)}#confirm-dialog .confirm-mark svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}#confirm-dialog-copy{margin:0;color:var(--muted);font-size:14px;line-height:1.8}#confirm-dialog-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:24px}#confirm-dialog-actions button{margin:0}#confirm-dialog-actions .stir{font-size:15px;padding:12px}#confirm-dialog-actions .text-button{padding:12px;border:1px solid var(--line);border-radius:13px;background:#ffffff55;color:var(--muted)}#confirm-dialog-actions .text-button:hover{background:#fff}
+@media(max-width:520px){#confirm-dialog-actions{grid-template-columns:1fr}}
 </style></head>
 <body>
 <svg class="symbols" xmlns="http://www.w3.org/2000/svg"><defs>
 <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.2 9a3 3 0 015.6 1.3c-.8 1.5-2.8 1.6-2.8 3.7m0 3h.01"/></symbol>
 <symbol id="i-sound" viewBox="0 0 24 24"><path d="M11 4L6 8H3v8h3l5 4V4zm4 4a6 6 0 010 8m3-11a10 10 0 010 14"/></symbol>
+<symbol id="i-sound-muted" viewBox="0 0 24 24"><path d="M11 4L6 8H3v8h3l5 4V4z"/><path d="m4 4 16 16"/></symbol>
+<symbol id="i-save" viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-6h8v6"/></symbol>
+<symbol id="i-load" viewBox="0 0 24 24"><path d="M12 3v11m0 0-4-4m4 4 4-4"/><path d="M5 13v7h14v-7"/></symbol>
 <symbol id="i-reset" viewBox="0 0 24 24"><path d="M20 9a8 8 0 10-1 8M20 4v5h-5"/></symbol>
 <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
 <symbol id="i-stir" viewBox="0 0 24 24"><path d="M9 8c-7-2-9 8-3 10 3 1 5-1 6-4m2-5c6 4 11-2 7-6-3-3-7-1-7 3m0 8c-1 7 8 10 10 4" transform="translate(-1 1) scale(.95)"/><circle cx="12" cy="11" r="1"/></symbol>
@@ -29,7 +39,7 @@ h1{font-size:clamp(42px,3.6vw,54px);white-space:nowrap}#game.pointer-focused:foc
 <header>
 <a class="brand" href="./" aria-label="瓜体实验室首页"><span class="brand-melon"><svg viewBox="0 0 48 48"><path d="M4 10a21 21 0 0042 0Z" fill="#90b786"/><path d="M7 10a18 18 0 0036 0Z" fill="#eff5d8"/><path d="M10 10a15 15 0 0030 0Z" fill="#ff8d99"/><path d="m18 17 1 3m12-3-1 3m-5 5v2" stroke="#292b46" stroke-width="2" stroke-linecap="round"/></svg></span><span>瓜体实验室</span><small>MELON<br>LAB</small></a>
 <span class="tagline">半流体合成游戏</span>
-<nav aria-label="游戏控制"><button id="help" class="icon-button" aria-label="帮助"><svg><use href="#i-help"/></svg><span>帮助</span></button><button id="sound" class="icon-button" aria-label="声音" aria-pressed="false"><svg><use href="#i-sound"/></svg><span>声音</span></button><button id="pause" class="icon-button" aria-label="暂停"><svg><use href="#i-pause"/></svg><span>暂停</span></button><button id="restart" class="icon-button" aria-label="重开"><svg><use href="#i-reset"/></svg><span>重开</span></button></nav>
+<nav aria-label="游戏控制"><button id="help" class="icon-button" aria-label="帮助"><svg><use href="#i-help"/></svg><span>帮助</span></button><button id="sound" class="icon-button" aria-label="声音" aria-pressed="false"><svg class="sound-icon sound-on" aria-hidden="true"><use href="#i-sound"/></svg><svg class="sound-icon sound-off" aria-hidden="true"><use href="#i-sound-muted"/></svg><span>静音</span></button><button id="save" class="icon-button" aria-label="保存进度" title="保存当前模式进度"><svg aria-hidden="true"><use href="#i-save"/></svg><span>保存</span></button><button id="load" class="icon-button" aria-label="读取进度" title="读取当前模式进度" disabled><svg aria-hidden="true"><use href="#i-load"/></svg><span>读取</span></button><button id="pause" class="icon-button" aria-label="暂停"><svg><use href="#i-pause"/></svg><span>暂停</span></button><button id="restart" class="icon-button" aria-label="重开"><svg><use href="#i-reset"/></svg><span>重开</span></button></nav>
 </header>
 <main>
 <section class="intro" aria-label="游戏分数">
@@ -56,7 +66,9 @@ h1{font-size:clamp(42px,3.6vw,54px);white-space:nowrap}#game.pointer-focused:foc
 <footer><span>鼠标 / 触屏投放</span><span><kbd>A</kbd> <kbd>D</kbd> 倾斜</span><span><kbd>空格</kbd> 搅动</span><span class="key-help"><kbd>←</kbd><kbd>→</kbd> 瞄准 · <kbd>Enter</kbd> 投放</span></footer>
 </div>
 <dialog id="dialog" aria-labelledby="dialog-title"><div class="dialog-melon" aria-hidden="true"></div><h2 id="dialog-title"></h2><div id="dialog-body"></div><button id="dialog-action" class="stir"></button><button id="dialog-close" class="text-button">返回游戏</button></dialog>
-<dialog id="upgrade-dialog" aria-labelledby="upgrade-title"><small>实验配方 · 三选一</small><h2 id="upgrade-title">实验升级</h2><p>选择新配方，或强化已有配方。果池已暂停。</p><div id="upgrade-options"></div><p>最多持有 6 种配方 · 每种最高 Lv.3</p></dialog><script>(()=>{
+<dialog id="upgrade-dialog" aria-labelledby="upgrade-title"><small>实验配方 · 三选一</small><h2 id="upgrade-title">实验升级</h2><p>选择新配方，或强化已有配方。果池已暂停。</p><div id="upgrade-options"></div><p>最多持有 6 种配方 · 每种最高 Lv.3</p></dialog>
+<dialog id="save-dialog" aria-labelledby="save-dialog-title"><small id="save-dialog-kicker">当前模式 · 3 个存档槽</small><h2 id="save-dialog-title">保存进度</h2><p id="save-dialog-copy">选择一个槽位保存当前进度。</p><div id="save-slots"></div><button id="save-dialog-close" class="text-button">返回游戏</button></dialog>
+<dialog id="confirm-dialog" aria-labelledby="confirm-dialog-title"><div class="confirm-mark" aria-hidden="true"><svg><use href="#i-save"/></svg></div><small>覆盖存档</small><h2 id="confirm-dialog-title">确认覆盖？</h2><p id="confirm-dialog-copy">该槽位已有进度，确认后旧存档会被替换。</p><div id="confirm-dialog-actions"><button id="confirm-dialog-cancel" class="text-button">取消，换一个槽位</button><button id="confirm-dialog-accept" class="stir">确认覆盖</button></div></dialog><script>(()=>{
 const {World,TYPES,MODES,BOUNDS}=(()=>{
 const TYPES = [
   {name:'葡萄',r:18,color:'#9164d9'}, {name:'樱桃',r:24,color:'#ef5275'},
@@ -91,9 +103,9 @@ function overlap(a,b){
   return {depth:Math.max(0,depth),nx,ny};
 }
 class World{
-  constructor(onMerge=()=>{}){this.bodies=[];this.time=0;this.nextId=1;this.mode='fluid';this.tilt=0;this.onMerge=onMerge;this.fruitScale=1;this.fields=[];}
+  constructor(onMerge=()=>{},onCollision=()=>{}){this.bodies=[];this.time=0;this.nextId=1;this.mode='fluid';this.tilt=0;this.onMerge=onMerge;this.onCollision=onCollision;this.fruitScale=1;this.fields=[];this.contacts=new Set();}
   add(type,x,y,vx=0,vy=0,scale=1){const r=TYPES[type].r*scale;const p=Array.from({length:N},(_,i)=>{const angle=TAU*i/N,px=x+Math.cos(angle)*r,py=y+Math.sin(angle)*r;return{x:px,y:py,px:px-vx/120,py:py-vy/120};});const body={id:this.nextId++,type,r,p,x,y,age:0,area:areaOf(p),danger:0};this.bodies.push(body);return body;}
-  reset(seed=true){this.fields=[];this.bodies=[];this.time=0;this.tilt=0;if(seed){this.add(4,91,BOUNDS.bottom-50);this.add(3,191,BOUNDS.bottom-40);this.add(5,305,BOUNDS.bottom-61);this.add(2,413,BOUNDS.bottom-32);this.add(1,255,BOUNDS.bottom-137);}}
+  reset(seed=true){this.fields=[];this.bodies=[];this.contacts.clear();this.time=0;this.tilt=0;if(seed){this.add(4,91,BOUNDS.bottom-50);this.add(3,191,BOUNDS.bottom-40);this.add(5,305,BOUNDS.bottom-61);this.add(2,413,BOUNDS.bottom-32);this.add(1,255,BOUNDS.bottom-137);}}
   stir(){for(const b of this.bodies)for(const p of b.p){const vx=(b.x-250)*-1.5+(b.y-430)*1.9;const vy=-250-(Math.random()*100);p.px=p.x-vx/120;p.py=p.y-vy/120;}}
   step(dt=1/120){
     const mode=MODES[this.mode];this.time+=dt;
@@ -101,7 +113,7 @@ class World{
     for(const f of this.fields){if(f.kind==='pair'){const a=this.bodies.find(b=>b.id===f.a),b=this.bodies.find(b=>b.id===f.b);if(!a||!b)continue;const d=Math.hypot(a.x-b.x,a.y-b.y)||1;for(const [body,sign]of[[a,1],[b,-1]])for(const p of body.p){p.px-=sign*(b.x-a.x)/d*180*dt*dt;p.py-=sign*(b.y-a.y)/d*180*dt*dt;}}else{for(const b of this.bodies){const d=Math.hypot(b.x-f.x,b.y-f.y);if(d<1||d>f.range)continue;for(const p of b.p){p.px-=(f.x-b.x)/d*70*dt*dt;p.py-=(f.y-b.y)/d*70*dt*dt;}}}}
 
     for(const b of this.bodies){b.age+=dt;for(const p of b.p){const vx=clamp((p.x-p.px)*mode.damping,-5,5),vy=clamp((p.y-p.py)*mode.damping,-5,5);p.px=p.x;p.py=p.y;p.x+=vx+this.tilt*760*dt*dt;p.y+=vy+980*dt*dt;}}
-    const locked=new Set(),merges=[];
+    const locked=new Set(),merges=[],contacts=new Set();
     for(let iteration=0;iteration<6;iteration++){
       for(const b of this.bodies){
         const edge=2*b.r*Math.sin(Math.PI/N),bend=2*b.r*Math.sin(2*Math.PI/N);
@@ -111,9 +123,10 @@ class World{
       for(let i=0;i<this.bodies.length;i++)for(let j=i+1;j<this.bodies.length;j++){
         const a=this.bodies[i],b=this.bodies[j];if(Math.hypot(b.x-a.x,b.y-a.y)>(a.r+b.r)*1.5)continue;
         const hit=overlap(a,b);if(!hit)continue;
-        if(a.type===b.type&&!locked.has(a.id)&&!locked.has(b.id)){
+        const pair=a.id<b.id?`${a.id}:${b.id}`:`${b.id}:${a.id}`,sameType=a.type===b.type;contacts.add(pair);
+        if(sameType&&!locked.has(a.id)&&!locked.has(b.id)){
           locked.add(a.id);locked.add(b.id);merges.push([a,b]);
-        }
+        }else if(!sameType&&!this.contacts.has(pair))this.onCollision({x:(a.x+b.x)/2,y:(a.y+b.y)/2,type:Math.max(a.type,b.type)});
         const wa=b.area/(a.area+b.area),wb=1-wa;
         for(const [body,sign,weight]of[[a,-1,wa],[b,1,wb]])for(const p of body.p){
           const contact=clamp(-sign*((p.x-body.x)*hit.nx+(p.y-body.y)*hit.ny)/body.r,0,1);
@@ -127,6 +140,7 @@ class World{
         if(p.y>BOUNDS.bottom){p.y=BOUNDS.bottom;p.py=p.y;p.px+=(p.x-p.px)*.025;}
       }
     }
+    this.contacts=contacts;
     if(merges.length){this.bodies=this.bodies.filter(b=>!locked.has(b.id));for(const[a,b]of merges){const type=a.type+1,x=(a.x+b.x)/2,y=(a.y+b.y)/2;if(type<TYPES.length){const r=TYPES[type].r*this.fruitScale;this.add(type,clamp(x,BOUNDS.left+r,BOUNDS.right-r),Math.min(y,BOUNDS.bottom-r),0,0,this.fruitScale);}this.onMerge({type:Math.min(type,8),x,y,points:2**(type+1),cleared:type>=TYPES.length});}}
     for(const b of this.bodies){center(b);const highest=Math.min(...b.p.map(p=>p.y));b.danger=b.age>1.8&&highest<BOUNDS.line?b.danger+dt:Math.max(0,b.danger-dt*2);}
   }
@@ -141,7 +155,11 @@ const keys=new Set(),dialog=$('dialog');
 try{best=Math.max(0,Number(localStorage.getItem('melon-lab-best-rogue'))||0);}catch{}
 $('best').textContent=best;
 const upgradeDialog=$('upgrade-dialog');
+const saveDialog=$('save-dialog');
+const confirmDialog=$('confirm-dialog');
 let runMode='rogue',level=1,xp=0,pendingLevels=0,skills={},rerolls=0,dropProgress=0,ventUsed=false,peakCombo=0,melons=0,winPending=false,choices=[],loadoutStamp='';
+const SAVE_SLOTS=3;
+let slotDialogMode='save',slotDialogWasRunning=false,pendingSaveSlot=0;
 const SKILLS=[
 {id:'magnet',name:'同类趋近',effects:['合成后牵引附近 1 对同类水果，持续 0.4 秒。','牵引范围 140 → 168，持续 0.6 秒。','牵引范围 189，最多 2 对，持续 0.8 秒。']},
 {id:'wave',name:'余波荡漾',effects:['合成时产生半径 115 的轻微震荡。','震荡半径扩大至 138。','震荡半径 155，随后轻微回拢 0.5 秒。']},
@@ -173,19 +191,75 @@ $('reroll').addEventListener('click',()=>{if(!rerolls||paused||ended||!loaded)re
 document.querySelectorAll('[data-run]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.run===runMode||upgradeDialog.open)return;const switchMode=()=>{runMode=b.dataset.run;document.querySelectorAll('[data-run]').forEach(el=>el.setAttribute('aria-pressed',String(el===b)));reset();};if(score||world.time>2)showDialog('切换模式并重新开始？','本局进度将清空，两种模式分别记录最佳分数。','切换模式',switchMode);else switchMode();}));
 
 function tone(frequency=420,length=.09){if(muted)return;try{audio??=new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume().catch(()=>{});const oscillator=audio.createOscillator(),gain=audio.createGain();oscillator.type='sine';oscillator.frequency.setValueAtTime(frequency,audio.currentTime);oscillator.frequency.exponentialRampToValueAtTime(frequency*.55,audio.currentTime+length);gain.gain.setValueAtTime(.11,audio.currentTime);gain.gain.exponentialRampToValueAtTime(.001,audio.currentTime+length);oscillator.connect(gain).connect(audio.destination);oscillator.start();oscillator.stop(audio.currentTime+length);}catch{}}
+// SFX from Mixkit: "Game ball tap" (2073) and "Winning a coin, video game" (2069),
+// downloaded locally from https://mixkit.co/free-sound-effects/game/ under the Mixkit License.
+const sfx={collision:{audio:new Audio('assets/fruit-collision.mp3'),volume:.13},merge:{audio:new Audio('assets/fruit-merge.mp3'),volume:.22}};
+Object.values(sfx).forEach(({audio})=>audio.preload='auto');
+function playSfx(name,playbackRate=1){if(muted)return;const effect=sfx[name];if(!effect)return;try{const clip=effect.audio.cloneNode();clip.volume=effect.volume;clip.playbackRate=playbackRate;clip.currentTime=0;const promise=clip.play();promise?.catch(()=>{});}catch{}}
 function toast(text){$('toast').textContent=text;$('toast').classList.add('visible');toastUntil=performance.now()+1800;}
-function syncUI(){ $('score').textContent=score;$('best').textContent=best;$('energy').value=energy;$('energy-value').textContent=Math.floor(energy);$('stir').disabled=energy<stirCost()||ended||paused;syncRogueUI();$('game').dataset.fruits=world.bodies.length;$('game').dataset.phase=ended?'ended':paused?'paused':'playing';}
+function syncUI(){ $('score').textContent=score;$('best').textContent=best;$('energy').value=energy;$('energy-value').textContent=Math.floor(energy);$('stir').disabled=energy<stirCost()||ended||paused;syncRogueUI();syncSaveLoadUI();$('game').dataset.fruits=world.bodies.length;$('game').dataset.phase=ended?'ended':paused?'paused':'playing';}
 function showDialog(title,body,button,action,closable=true){paused=true;keys.clear();heldTilt=0;$('dialog-title').textContent=title;$('dialog-body').innerHTML=body;$('dialog-action').textContent=button;$('dialog-action').onclick=()=>{dialog.close();action();};$('dialog-close').hidden=!closable;if(!dialog.open)dialog.showModal();syncUI();}
 function resume(){paused=false;$('pause').querySelector('span').textContent='暂停';$('pause').setAttribute('aria-label','暂停');syncUI();pumpRewards(true);}
 function finish(){if(ended)return;ended=true;showDialog('果池满了，休息一下',`这一次的合成分数<strong>${score}</strong>${runSummary()}<p>试试切换流动性，给大水果腾出一点空间。</p>`,'再来一池',reset,false);}
+function progressKey(slot){return `melon-lab-progress-${runMode}-${slot}`;}
+function legacyProgressKey(){return `melon-lab-progress-${runMode}`;}
+function progressModeName(){return runMode==='rogue'?'配方实验':'经典合成';}
+function readProgressSlot(slot){try{const saved=localStorage.getItem(progressKey(slot));if(saved)return JSON.parse(saved);if(slot===1){const legacy=localStorage.getItem(legacyProgressKey());return legacy?JSON.parse(legacy):null;}}catch{}return null;}
+function hasSavedSlot(slot){try{return Boolean(localStorage.getItem(progressKey(slot))||(slot===1&&localStorage.getItem(legacyProgressKey())));}catch{return false;}}
+function hasSavedProgress(){for(let slot=1;slot<=SAVE_SLOTS;slot++)if(hasSavedSlot(slot))return true;return false;}
+function syncSaveLoadUI(){const saveButton=$('save'),loadButton=$('load'),available=hasSavedProgress();saveButton.disabled=!loaded||paused||ended||upgradeDialog.open;loadButton.disabled=!loaded||!available;loadButton.title=available?`读取${progressModeName()}进度`:`${progressModeName()}暂无存档`;}
+function finiteNumber(value,fallback=0){const number=Number(value);return Number.isFinite(number)?number:fallback;}
+function inRange(value,min,max){return Math.max(min,Math.min(max,value));}
+function snapshotBody(body){return{id:body.id,type:body.type,r:body.r,x:body.x,y:body.y,age:body.age,area:body.area,danger:body.danger,p:body.p.map(point=>({x:point.x,y:point.y,px:point.px,py:point.py}))};}
+function formatSaveDate(timestamp){const date=new Date(finiteNumber(timestamp,0));return Number.isFinite(date.getTime())?date.toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'时间未知';}
+function slotSummary(snapshot){if(!snapshot)return'空槽位 · 可以保存新进度';const count=Array.isArray(snapshot.world?.bodies)?snapshot.world.bodies.length:0;return`保存于 ${formatSaveDate(snapshot.savedAt)} · ${Math.round(finiteNumber(snapshot.score,0))} 分 · ${count} 颗水果`;}
+function renderSaveSlots(){const container=$('save-slots');container.replaceChildren();for(let slot=1;slot<=SAVE_SLOTS;slot++){const snapshot=readProgressSlot(slot),occupied=hasSavedSlot(slot),item=document.createElement('div');item.className='save-slot';item.dataset.filled=String(occupied);const label=document.createElement('strong');label.className='save-slot-label';label.textContent=`存档槽位 ${slot}`;const meta=document.createElement('span');meta.className='save-slot-meta';meta.textContent=occupied&&snapshot?slotSummary(snapshot):occupied?'存档数据无法读取':slotSummary(null);const action=document.createElement('button');action.className=slotDialogMode==='save'&&!snapshot?'':'primary';action.textContent=slotDialogMode==='save'?(occupied?'覆盖保存':'保存到此处'):'读取';action.disabled=slotDialogMode==='load'&&!snapshot;action.addEventListener('click',()=>slotDialogMode==='save'?saveToSlot(slot):loadFromSlot(slot));item.append(label,meta,action);container.append(item);}}
+function openSaveDialog(mode){if(!loaded){toast('果池还没准备好');return;}if(mode==='save'&&(paused||ended||upgradeDialog.open)){toast('当前无法保存，请先回到游戏');return;}slotDialogMode=mode;slotDialogWasRunning=!paused&&!ended;paused=true;keys.clear();heldTilt=0;accumulator=0;$('save-dialog-kicker').textContent=`${progressModeName()} · 3 个存档槽`;$('save-dialog-title').textContent=mode==='save'?'保存进度':'读取进度';$('save-dialog-copy').textContent=mode==='save'?'选择空槽保存，或覆盖已有存档。':'选择要读取的存档槽位。';renderSaveSlots();if(!saveDialog.open)saveDialog.showModal();syncUI();}
+function buildProgressSnapshot(){return{version:1,mode:runMode,savedAt:Date.now(),score,energy,aim,current,next,cooldownRemaining:Math.max(0,cooldown-world.time),combo,mergeAge:Math.max(0,world.time-lastMerge),hasWon,world:{time:world.time,mode:world.mode,tilt:world.tilt,nextId:world.nextId,bodies:world.bodies.map(snapshotBody),fields:world.fields.map(field=>({...field}))},rogue:runMode==='rogue'?{level,xp,pendingLevels,skills:{...skills},rerolls,dropProgress,ventUsed,peakCombo,melons,winPending}:null};}
+function writeProgressToSlot(slot){try{localStorage.setItem(progressKey(slot),JSON.stringify(buildProgressSnapshot()));if(confirmDialog.open)confirmDialog.close();if(saveDialog.open)saveDialog.close();syncSaveLoadUI();toast(`${progressModeName()} · 存档 ${slot} 已保存`);}catch{toast('保存失败，请检查浏览器存储空间');}}
+function saveToSlot(slot){if(!loaded||slotDialogMode!=='save')return;if(hasSavedSlot(slot)){pendingSaveSlot=slot;$('confirm-dialog-copy').textContent=`存档槽位 ${slot} 已有${progressModeName()}进度。确认覆盖后，旧进度会被替换；也可以取消并选择另一个槽位。`;if(!confirmDialog.open)confirmDialog.showModal();return;}writeProgressToSlot(slot);}
+function saveProgress(){openSaveDialog('save');}
+function restoreBody(raw,index){
+  if(!raw||!Array.isArray(raw.p)||raw.p.length!==N)return null;
+  const type=Math.trunc(finiteNumber(raw.type,-1));if(type<0||type>=TYPES.length)return null;
+  const id=Math.trunc(finiteNumber(raw.id,index+1));if(id<1)return null;
+  const points=raw.p.map(point=>({x:finiteNumber(point?.x,NaN),y:finiteNumber(point?.y,NaN),px:finiteNumber(point?.px,NaN),py:finiteNumber(point?.py,NaN)}));
+  if(points.some(point=>Object.values(point).some(value=>!Number.isFinite(value))))return null;
+  return{id,type,r:Math.max(1,finiteNumber(raw.r,TYPES[type].r)),p:points,x:finiteNumber(raw.x,0),y:finiteNumber(raw.y,0),age:Math.max(0,finiteNumber(raw.age,0)),area:Math.max(1,finiteNumber(raw.area,1)),danger:Math.max(0,finiteNumber(raw.danger,0))};
+}
+function restoreField(raw){
+  if(!raw||!Number.isFinite(Number(raw.until)))return null;
+  const until=Number(raw.until);
+  if(raw.kind==='pair'){const a=Math.trunc(finiteNumber(raw.a,-1)),b=Math.trunc(finiteNumber(raw.b,-1));return a>0&&b>0?{kind:'pair',a,b,until}:null;}
+  if(raw.kind==='pull'){const x=finiteNumber(raw.x,NaN),y=finiteNumber(raw.y,NaN),range=finiteNumber(raw.range,NaN);return Number.isFinite(x)&&Number.isFinite(y)&&Number.isFinite(range)&&range>0?{kind:'pull',x,y,range,until}:null;}
+  return null;
+}
+function loadProgress(snapshot=readProgressSlot(1)){
+  if(!loaded){toast('果池还没准备好');return false;}
+  if(!snapshot){toast(`${progressModeName()}暂无有效存档`);return false;}
+  const savedWorld=snapshot?.world;
+  if(snapshot?.version!==1||snapshot.mode!==runMode||!savedWorld||!Array.isArray(savedWorld.bodies)){toast(`${progressModeName()}暂无有效存档`);return false;}
+  const bodies=savedWorld.bodies.map((body,index)=>restoreBody(body,index));
+  const ids=new Set();let invalidBody=false;for(const body of bodies){if(!body||ids.has(body.id)){invalidBody=true;break;}ids.add(body.id);}if(invalidBody){toast('存档数据无效');return false;}
+  const maxId=Math.max(0,...bodies.map(body=>body.id));
+  if(dialog.open)dialog.close();if(upgradeDialog.open)upgradeDialog.close();choices=[];
+  score=Math.max(0,Math.round(finiteNumber(snapshot.score,0)));energy=inRange(finiteNumber(snapshot.energy,100),0,100);aim=inRange(finiteNumber(snapshot.aim,250),45,455);current=inRange(Math.trunc(finiteNumber(snapshot.current,0)),0,TYPES.length-1);next=inRange(Math.trunc(finiteNumber(snapshot.next,0)),0,TYPES.length-1);
+  world.bodies=bodies;world.time=Math.max(0,finiteNumber(savedWorld.time,0));world.tilt=inRange(finiteNumber(savedWorld.tilt,0),-1,1);world.mode=MODES[savedWorld.mode]?savedWorld.mode:'fluid';world.nextId=Math.max(maxId+1,Math.trunc(finiteNumber(savedWorld.nextId,maxId+1)));world.fields=Array.isArray(savedWorld.fields)?savedWorld.fields.map(restoreField).filter(field=>field&&field.until>world.time):[];world.contacts.clear();
+  combo=Math.max(0,Math.trunc(finiteNumber(snapshot.combo,0)));const mergeAge=Math.max(0,finiteNumber(snapshot.mergeAge,10));lastMerge=world.time-mergeAge;cooldown=world.time+Math.max(0,finiteNumber(snapshot.cooldownRemaining,0));hasWon=Boolean(snapshot.hasWon);ended=false;paused=false;effects=[];ripples=[];accumulator=0;pointer=null;heldTilt=0;keys.clear();
+  if(runMode==='rogue'){
+    const savedRogue=snapshot.rogue||{};level=Math.max(1,Math.trunc(finiteNumber(savedRogue.level,1)));xp=Math.max(0,finiteNumber(savedRogue.xp,0));pendingLevels=Math.max(0,Math.trunc(finiteNumber(savedRogue.pendingLevels,0)));skills={};if(savedRogue.skills&&typeof savedRogue.skills==='object'){for(const skill of SKILLS){const value=Math.trunc(finiteNumber(savedRogue.skills[skill.id],0));if(value>0)skills[skill.id]=Math.min(3,value);if(Object.keys(skills).length>=6)break;}}rerolls=Math.max(0,Math.trunc(finiteNumber(savedRogue.rerolls,0)));dropProgress=Math.max(0,Math.trunc(finiteNumber(savedRogue.dropProgress,0)));ventUsed=Boolean(savedRogue.ventUsed);peakCombo=Math.max(0,Math.trunc(finiteNumber(savedRogue.peakCombo,0)));melons=Math.max(0,Math.trunc(finiteNumber(savedRogue.melons,0)));winPending=Boolean(savedRogue.winPending);world.fruitScale=1-[0,.04,.07,.10][skillLevel('compact')];
+  }else world.fruitScale=1;
+  document.querySelectorAll('[data-mode]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.mode===world.mode)));$('mode-desc').textContent=MODES[world.mode].label;updateNext();syncUI();toast(`${progressModeName()}进度已读取`);if(pendingLevels||winPending)pumpRewards(true);return true;
+}
+function loadFromSlot(slot){if(slotDialogMode!=='load')return;const snapshot=readProgressSlot(slot);if(!snapshot){toast('此存档槽位暂无可读取进度');renderSaveSlots();return;}if(loadProgress(snapshot)&&saveDialog.open)saveDialog.close();}
 const world=new World(event=>{
   combo=world.time-lastMerge<[1.2,1.8,2.4,3][skillLevel("chain")]?combo+1:1;lastMerge=world.time;const bonus=event.points*Math.min(combo,4);score+=bonus;energy=Math.min(100,energy+8+[0,3,5,7][skillLevel("energy")]);peakCombo=Math.max(peakCombo,combo);if(!event.cleared&&event.type===8)melons++;if(runMode==="rogue"){gainXP(Math.round((4+(event.type+1)*2)*(1+Math.min(combo-1,3)*.1)));mergeSkills(event);}
   if(score>best){best=score;try{localStorage.setItem(bestKey(),String(best));}catch{}}
-  effects.push({x:event.x,y:event.y,text:`+${bonus}${combo>1?' · '+combo+' 连融':''}`,life:1.2});ripples.push({x:event.x,y:event.y,life:.6,r:TYPES[event.type].r,color:TYPES[event.type].color});tone(330+event.type*80,.16);
+  effects.push({x:event.x,y:event.y,text:`+${bonus}${combo>1?' · '+combo+' 连融':''}`,life:1.2});ripples.push({x:event.x,y:event.y,life:.6,r:TYPES[event.type].r,color:TYPES[event.type].color});playSfx('merge',.92+Math.min(event.type,8)*.03);
   const step=document.querySelector(`[data-fruit="${event.type}"]`);if(step){step.classList.remove('new');void step.offsetWidth;step.classList.add('new');}
   if(event.type===8&&!hasWon){hasWon=true;winPending=true;}
   syncUI();
-});
+},event=>playSfx('collision',.94+Math.min(event.type,8)*.02));
 function reset(){resetRogue();world.reset();world.mode=document.querySelector('[data-mode][aria-pressed=true]').dataset.mode;score=0;energy=100;current=0;next=0;cooldown=0;aim=250;ended=false;hasWon=false;paused=false;effects=[];ripples=[];combo=0;lastMerge=-10;keys.clear();heldTilt=0;if(dialog.open)dialog.close();updateNext();resume();$('aim-tip').textContent='移动瞄准 · 点击投放';}
 function pickFruit(){return Math.floor(Math.random()**1.65*4);}
 function drop(){if(!loaded||paused||ended||world.time<cooldown)return;const r=TYPES[current].r;aim=Math.max(BOUNDS.left+r+3,Math.min(BOUNDS.right-r-3,aim));world.add(current,aim,65,world.tilt*20,70);current=next;next=pickFruit();onDrop();cooldown=world.time+.42;updateNext();tone(240,.06);syncUI();}
@@ -228,11 +302,15 @@ canvas.addEventListener('pointerdown',e=>{e.preventDefault();if(pointer!==null)r
 canvas.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'||pointer===e.pointerId)pointerAim(e);});
 canvas.addEventListener('pointerup',e=>{if(pointer!==e.pointerId)return;pointerAim(e);pointer=null;drop();});canvas.addEventListener('pointercancel',()=>pointer=null);
 for(const[id,direction]of[['tilt-left',-1],['tilt-right',1]]){const button=$(id);button.addEventListener('pointerdown',e=>{e.preventDefault();button.setPointerCapture(e.pointerId);heldTilt=direction;});for(const name of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(name,()=>heldTilt=0);}
-document.addEventListener('keydown',e=>{if(dialog.open||upgradeDialog.open)return;canvas.classList.remove('pointer-focused');const key=e.key.toLowerCase();if(['arrowleft','arrowright','a','d'].includes(key)){e.preventDefault();keys.add(key);}if((key===' '||key==='enter')&&!e.repeat&&!['BUTTON','A'].includes(document.activeElement.tagName)){e.preventDefault();key===' '?stir():drop();}if(key==='p'&&!e.repeat)$('pause').click();});
+document.addEventListener('keydown',e=>{if(dialog.open||upgradeDialog.open||saveDialog.open||confirmDialog.open)return;canvas.classList.remove('pointer-focused');const key=e.key.toLowerCase();if(['arrowleft','arrowright','a','d'].includes(key)){e.preventDefault();keys.add(key);}if((key===' '||key==='enter')&&!e.repeat&&!['BUTTON','A'].includes(document.activeElement.tagName)){e.preventDefault();key===' '?stir():drop();}if(key==='p'&&!e.repeat)$('pause').click();});
 document.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>{keys.clear();heldTilt=0;pointer=null;});document.addEventListener('visibilitychange',()=>{keys.clear();heldTilt=0;last=performance.now();});
 document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{world.mode=button.dataset.mode;document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));$('mode-desc').textContent=MODES[world.mode].label;tone(250,.05);}));
 $('stir').addEventListener('click',stir);
 $('sound').addEventListener('click',()=>{muted=!muted;$('sound').setAttribute('aria-pressed',String(!muted));$('sound').querySelector('span').textContent=muted?'静音':'声音';tone();});
+$('save').addEventListener('click',saveProgress);
+$('load').addEventListener('click',()=>openSaveDialog('load'));
+$('save-dialog-close').addEventListener('click',()=>saveDialog.close());saveDialog.addEventListener('close',()=>{if(slotDialogWasRunning&&!ended){paused=false;$('pause').querySelector('span').textContent='暂停';$('pause').setAttribute('aria-label','暂停');}slotDialogWasRunning=false;syncUI();});saveDialog.addEventListener('cancel',e=>{e.preventDefault();saveDialog.close();});
+$('confirm-dialog-cancel').addEventListener('click',()=>{pendingSaveSlot=0;confirmDialog.close();});$('confirm-dialog-accept').addEventListener('click',()=>{const slot=pendingSaveSlot;pendingSaveSlot=0;confirmDialog.close();if(slot)writeProgressToSlot(slot);});confirmDialog.addEventListener('cancel',e=>{e.preventDefault();pendingSaveSlot=0;confirmDialog.close();});confirmDialog.addEventListener('close',()=>{pendingSaveSlot=0;});
 $('pause').addEventListener('click',()=>{if(ended||upgradeDialog.open)return;showDialog('让果冻歇一会儿','水果和时间都停在这里。','继续游戏',resume);});
 $('restart').addEventListener('click',()=>{if(upgradeDialog.open)return;if(score===0){reset();return;}showDialog('开始一池新的水果？','本局分数将清零，最佳分数会保留。','重新开始',reset);});
 $('help').addEventListener('click',()=>{if(upgradeDialog.open)return;showDialog('一点物理，一点好运','<p>移动鼠标瞄准，点击投放。手机上拖动瞄准，松手投放。</p><p>同类水果碰到一起就会融合。切换「果冻 / 半流体 / 果汁」，感受不同弹性与流动性。</p><p>按 A / D 倾斜果池，按空格搅动。经典模式：搅动消耗 30 能量，合成与等待恢复。实验模式：投放恢复 1 能量，合成恢复 8 能量，配方可强化效果。</p><p>实验模式中合成获得经验，升级三选一。最多持有 6 种配方，每种最高 3 级；点击已获得配方查看效果。重抽作用于池口待投水果。</p><p>水果越过虚线 3 秒，本局结束。合出西瓜后可以继续挑战。</p>','开始实验',resume);});

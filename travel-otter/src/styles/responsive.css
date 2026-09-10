@@ -1,0 +1,661 @@
+@media (max-width: 700px) {
+  .game {
+    width: 100%;
+    height: 100dvh;
+    min-height: 420px;
+    border: 0;
+    border-radius: 0;
+  }
+  .hud {
+    top: calc(15px + var(--safe-top));
+    left: 13px;
+    right: 13px;
+    gap: 9px;
+  }
+  .profile {
+    gap: 7px;
+    padding: 6px 12px 6px 6px;
+    border-radius: 16px 30px 30px 16px;
+  }
+  .avatar {
+    width: 42px;
+    height: 42px;
+  }
+  .avatar img {
+    width: 57px;
+    height: 57px;
+    margin: -4px 0 0 -8px;
+  }
+  .profile h1 {
+    font-size: 19px;
+    letter-spacing: 2px;
+  }
+  .profile > div:last-child > span {
+    font-size: 10px;
+    letter-spacing: 0;
+    margin-top: 3px;
+  }
+  .hud-right {
+    gap: 8px;
+  }
+  .wallet {
+    min-width: 103px;
+    height: 35px;
+    gap: 3px;
+    padding-right: 3px;
+  }
+  .wallet > span:first-child {
+    width: 34px;
+    height: 34px;
+  }
+  .wallet b {
+    font-size: 16px;
+  }
+  .wallet-plus {
+    width: 23px;
+    height: 23px;
+    padding: 3px;
+  }
+  .round {
+    width: 34px;
+    height: 34px;
+  }
+  .weather {
+    font-size: 12px;
+  }
+  .weather > span:first-child {
+    width: 24px;
+    height: 24px;
+  }
+  .mode-control {
+    right: 15px;
+    top: calc(80px + var(--safe-top));
+    gap: 5px;
+  }
+  .mode-toggle {
+    font-size: 11px;
+    padding: 5px 9px;
+  }
+  .mode-toggle input {
+    width: 32px;
+    height: 20px;
+  }
+  .mode-toggle input::before {
+    width: 12px;
+    height: 12px;
+  }
+  .mode-toggle input:checked::before {
+    transform: translateX(12px);
+  }
+  .scene {
+    object-position: 40% 48%;
+  }
+  .play-space {
+    inset: calc(126px + var(--safe-top)) 0 calc(214px + var(--safe-bottom));
+  }
+  .otter {
+    width: 145px;
+    height: 145px;
+    left: calc(50% - 64px);
+    top: 33%;
+  }
+  .status-bubble {
+    left: 50%;
+    top: 18%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 80px);
+    width: max-content;
+    padding: 10px 14px;
+    font-size: 12px;
+    border-radius: 16px;
+  }
+  .scene-label {
+    left: 50%;
+    top: auto;
+    bottom: -7px;
+    transform: translateX(-18%);
+    font-size: 12px;
+    padding: 4px 10px 4px 5px;
+  }
+  .scene-label > span {
+    width: 25px;
+    height: 25px;
+  }
+  .mailbox {
+    right: 12px;
+    top: calc(126px + var(--safe-top));
+  }
+  .mailbox > span {
+    width: 53px;
+    height: 53px;
+  }
+  .mailbox small {
+    font-size: 11px;
+    padding: 3px 11px;
+  }
+  .mailbox b {
+    width: 19px;
+    height: 19px;
+    font-size: 11px;
+    line-height: 15px;
+  }
+  .clovers {
+    left: 4%;
+    bottom: 5%;
+    width: 130px;
+    height: 90px;
+  }
+  .clover {
+    width: 43px;
+    height: 43px;
+    padding: 3px;
+  }
+  .garden-note {
+    left: 12px;
+    bottom: -36px;
+    font-size: 10px;
+    padding: 5px 8px;
+    max-width: calc(100% - 24px);
+  }
+  .visitor {
+    right: 12%;
+    bottom: 30%;
+    width: 56px;
+  }
+  .visitor > span:first-child {
+    width: 56px;
+    height: 56px;
+  }
+  .visitor-label {
+    font-size: 10px;
+    padding: 4px 7px;
+  }
+  .travel-sign {
+    top: 36%;
+    width: 235px;
+    padding: 18px;
+  }
+  .travel-sign strong {
+    font-size: 18px;
+  }
+  .home-status {
+    bottom: calc(117px + var(--safe-bottom));
+    width: calc(100% - 24px);
+    padding: 12px 11px 14px;
+    gap: 9px;
+    min-height: 83px;
+    border-radius: 16px;
+  }
+  .status-mark {
+    width: 36px;
+    height: 36px;
+  }
+  .status-copy h2 {
+    font-size: 16px;
+  }
+  .status-copy p {
+    font-size: 11px;
+    line-height: 1.65;
+    margin-top: 3px;
+  }
+  .home-status > .primary {
+    padding: 10px 9px;
+    font-size: 12px;
+    max-width: 105px;
+    min-width: 78px;
+    border-radius: 11px;
+  }
+  .bottom-nav {
+    bottom: calc(22px + var(--safe-bottom));
+    width: calc(100% - 20px);
+    height: 77px;
+    border-radius: 20px;
+    padding: 0 6px 4px;
+  }
+  .bottom-nav button {
+    font-size: 11px;
+    height: 83px;
+    gap: 3px;
+    max-width: 76px;
+    padding-bottom: 5px;
+  }
+  .nav-icon {
+    width: 48px;
+    height: 48px;
+  }
+  .bottom-nav b {
+    right: 5px;
+    top: 3px;
+    font-size: 9px;
+    min-width: 18px;
+    padding: 1px 3px;
+  }
+  .save-label {
+    bottom: calc(4px + var(--safe-bottom));
+    right: 13px;
+    font-size: 9px;
+  }
+  .panel-layer {
+    padding: calc(12px + var(--safe-top)) 10px calc(12px + var(--safe-bottom));
+    align-items: center;
+  }
+  .game-panel {
+    border-radius: 22px;
+    max-height: calc(100dvh - 24px - var(--safe-top) - var(--safe-bottom));
+    border-width: 2px;
+  }
+  .modal-head {
+    min-height: 81px;
+    padding: 14px 55px 13px 16px;
+    gap: 9px;
+  }
+  .panel-emblem {
+    width: 48px;
+    height: 48px;
+  }
+  .modal-head h2 {
+    font-size: 22px;
+    letter-spacing: 1px;
+  }
+  .modal-head small {
+    font-size: 10px;
+    margin-bottom: 5px;
+  }
+  .close-button {
+    top: 20px;
+    right: 12px;
+    width: 34px;
+    height: 34px;
+  }
+  .panel-scroll {
+    padding: 18px 14px;
+  }
+  .intro {
+    font-size: 13px;
+    line-height: 1.8;
+    margin-bottom: 16px;
+  }
+  .slots {
+    gap: 7px;
+    padding: 10px;
+    border-radius: 14px;
+    margin-bottom: 18px;
+  }
+  .slot {
+    min-height: 126px;
+    padding: 10px 2px 8px;
+  }
+  .slot > span {
+    width: 47px;
+    height: 47px;
+    margin-bottom: 7px;
+  }
+  .slot strong {
+    font-size: 11px;
+  }
+  .slot small {
+    font-size: 10px;
+    padding: 2px 4px;
+    margin-top: 5px;
+  }
+  .section-label {
+    font-size: 13px;
+    margin: 17px 0 12px;
+  }
+  .items {
+    gap: 11px 9px;
+  }
+  .item {
+    flex-direction: column;
+    gap: 8px;
+    text-align: center;
+    padding: 12px 6px 11px;
+  }
+  .item-icon {
+    width: 60px;
+    height: 60px;
+    padding: 5px;
+  }
+  .item strong {
+    font-size: 13px;
+  }
+  .item small {
+    font-size: 11px;
+  }
+  .item .cost {
+    font-size: 11px;
+  }
+  .item > span:last-child {
+    width: 100%;
+  }
+  .tabs button {
+    font-size: 12px;
+    padding: 10px 3px;
+  }
+  .primary,
+  .secondary {
+    font-size: 13px;
+  }
+  .full {
+    margin-top: 15px;
+    min-height: 46px;
+  }
+  .postcards {
+    gap: 18px 11px;
+  }
+  .postcard {
+    padding: 6px 6px 10px;
+  }
+  .postcard strong {
+    font-size: 14px;
+    margin: 9px 2px 4px;
+  }
+  .postcard small {
+    font-size: 10px;
+    margin: 0 2px;
+  }
+  .postcard:after {
+    font-size: 16px;
+    right: 7px;
+    bottom: 27px;
+  }
+  .detail-art {
+    border-width: 6px;
+    min-height: 140px;
+  }
+  .quote {
+    font-size: 16px;
+    line-height: 2;
+    margin: 20px 1px 15px;
+  }
+  .reward {
+    font-size: 12px;
+    padding: 12px 8px;
+  }
+  .souvenir {
+    padding: 19px 5px 15px;
+  }
+  .souvenir > span {
+    width: 60px;
+    height: 60px;
+  }
+  .souvenir strong {
+    font-size: 13px;
+  }
+  .souvenir small {
+    font-size: 11px;
+  }
+  .album-stack {
+    max-width: 255px;
+  }
+  .album-empty p {
+    font-size: 13px;
+  }
+  .checkrow {
+    padding: 12px;
+    gap: 10px;
+  }
+  .checkrow > span {
+    font-size: 14px;
+  }
+  .checkrow small {
+    font-size: 11px;
+  }
+  .developer-preview {
+    padding: 11px;
+  }
+  .developer-preview-actions .secondary {
+    font-size: 11px;
+  }
+  #toast {
+    font-size: 12px;
+    bottom: calc(215px + var(--safe-bottom));
+    padding: 10px 14px;
+  }
+  .panel-layer:not([hidden]) ~ #toast {
+    bottom: calc(30px + var(--safe-bottom));
+  }
+}
+@media (max-width: 350px) {
+  .developer-preview-actions {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 370px) {
+  .profile > div:last-child > span {
+    display: none;
+  }
+  .profile h1 {
+    font-size: 17px;
+  }
+  .profile {
+    padding-right: 8px;
+  }
+  .hud-right {
+    gap: 6px;
+  }
+  .hud {
+    left: 9px;
+    right: 9px;
+  }
+  .wallet {
+    min-width: 92px;
+  }
+  .status-mark {
+    display: none;
+  }
+  .status-copy h2 {
+    font-size: 15px;
+  }
+  .modal-head h2 {
+    font-size: 20px;
+  }
+  .panel-emblem {
+    width: 40px;
+    height: 40px;
+  }
+}
+@media (max-height: 690px) and (max-width: 700px) {
+  .play-space {
+    top: calc(116px + var(--safe-top));
+    bottom: calc(199px + var(--safe-bottom));
+  }
+  .otter {
+    width: 120px;
+    height: 120px;
+    top: 24%;
+    left: calc(50% - 51px);
+  }
+  .status-bubble {
+    top: 5%;
+    font-size: 11px;
+    padding: 7px 11px;
+  }
+  .clovers {
+    width: 119px;
+    height: 75px;
+    bottom: 2%;
+  }
+  .clover {
+    width: 39px;
+    height: 39px;
+  }
+  .home-status {
+    bottom: calc(107px + var(--safe-bottom));
+    min-height: 77px;
+  }
+  .bottom-nav {
+    bottom: calc(17px + var(--safe-bottom));
+    height: 71px;
+  }
+  .nav-icon {
+    width: 44px;
+    height: 44px;
+  }
+  .bottom-nav button {
+    height: 77px;
+  }
+  .garden-note {
+    bottom: -24px;
+    font-size: 9px;
+  }
+  .scene-label {
+    bottom: 0;
+  }
+  .visitor {
+    bottom: 28%;
+  }
+  .save-label {
+    bottom: 2px;
+  }
+}
+@media (max-height: 500px) and (min-width: 600px) {
+  .game {
+    height: 100dvh;
+    min-height: 300px;
+    border: 0;
+    border-radius: 0;
+  }
+  .hud {
+    top: 10px;
+    left: 15px;
+    right: 15px;
+  }
+  .profile {
+    padding: 4px 13px 4px 5px;
+  }
+  .avatar {
+    width: 36px;
+    height: 36px;
+  }
+  .avatar img {
+    width: 48px;
+    height: 48px;
+  }
+  .profile h1 {
+    font-size: 18px;
+  }
+  .profile > div:last-child > span {
+    display: none;
+  }
+  .weather {
+    font-size: 12px;
+  }
+  .mode-control {
+    top: 66px;
+    right: 17px;
+  }
+  .mailbox {
+    top: 110px;
+    right: 20px;
+  }
+  .home-status {
+    width: 320px;
+    left: 20px;
+    transform: none;
+    bottom: 19px;
+    min-height: 72px;
+    padding: 10px;
+  }
+  .status-mark {
+    display: none;
+  }
+  .status-copy h2 {
+    font-size: 15px;
+  }
+  .status-copy p {
+    font-size: 10px;
+  }
+  .home-status > .primary {
+    font-size: 11px;
+    padding: 8px;
+  }
+  .bottom-nav {
+    left: auto;
+    right: 15px;
+    transform: none;
+    bottom: 17px;
+    width: 310px;
+    height: 66px;
+  }
+  .bottom-nav button {
+    height: 74px;
+    font-size: 10px;
+  }
+  .nav-icon {
+    width: 43px;
+    height: 43px;
+  }
+  .play-space {
+    inset: 90px 0 105px;
+  }
+  .otter {
+    width: 120px;
+    height: 120px;
+    left: 43%;
+    top: 9%;
+  }
+  .status-bubble {
+    top: -7%;
+    left: 42%;
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+  .scene-label {
+    top: auto;
+    bottom: 0;
+    font-size: 11px;
+  }
+  .clovers {
+    height: 64px;
+    bottom: 2%;
+    width: 190px;
+  }
+  .clover {
+    width: 37px;
+    height: 37px;
+  }
+  .garden-note {
+    bottom: -15px;
+    font-size: 9px;
+  }
+  .visitor {
+    right: 28%;
+    width: 52px;
+  }
+  .visitor > span:first-child {
+    width: 52px;
+    height: 52px;
+  }
+  .game-panel {
+    max-height: calc(100dvh - 24px);
+  }
+  .modal-head {
+    min-height: 66px;
+    padding: 9px 65px 8px 20px;
+  }
+  .panel-emblem {
+    width: 43px;
+    height: 43px;
+  }
+  .modal-head h2 {
+    font-size: 21px;
+  }
+  .modal-head small {
+    font-size: 10px;
+  }
+  .close-button {
+    top: 13px;
+  }
+  .panel-layer {
+    padding: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *:before,
+  *:after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

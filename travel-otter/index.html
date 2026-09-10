@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#6a805d" />
+    <title>小獭远行</title>
+    <link rel="stylesheet" href="./src/styles/loading.css" />
+    <link rel="stylesheet" href="./src/styles/base.css" />
+    <link rel="stylesheet" href="./src/styles/responsive.css" />
+    <link rel="stylesheet" href="./src/styles/fixes.css" />
+    <link rel="stylesheet" href="./src/styles/life.css" />
+    <link rel="stylesheet" href="./src/styles/growth-ambience.css" />
+    <link rel="stylesheet" href="./src/styles/layout.css" />
+  </head>
+  <body class="booting">
+    <section
+      id="loading-screen"
+      class="loading-screen"
+      aria-labelledby="loading-title"
+      aria-busy="true">
+      <div class="loading-card">
+        <div class="loading-leaf" aria-hidden="true">☘</div>
+        <p class="loading-eyebrow">一段小小的旅程，即将开始</p>
+        <h1 id="loading-title">小獭远行</h1>
+        <p id="loading-resource" role="status" aria-live="polite">正在准备河畔小屋…</p>
+        <progress id="loading-progress" max="100" value="0" aria-label="资源加载进度"></progress>
+        <div class="loading-details">
+          <span id="loading-count">准备加载资源</span>
+          <b id="loading-percent">0%</b>
+        </div>
+        <p id="loading-error" hidden></p>
+        <button id="loading-retry" type="button" hidden>重新加载</button>
+        <p class="loading-footnote">收拾一点期待，等风捎来远方的消息。</p>
+      </div>
+    </section>
+    <noscript>请开启 JavaScript，让阿獭开始旅行。</noscript>
+    <main class="game" id="game" inert>
+      <section class="world" aria-label="河畔小屋">
+        <img class="scene" data-asset="cottage" alt="河畔木屋，绿树、小路和溪流" />
+        <div class="world-shade"></div>
+        <div class="play-space">
+          <button class="otter" id="otter" aria-label="和阿獭说说话">
+            <img data-asset="otter" alt="戴着红围巾的阿獭" />
+          </button>
+          <div class="status-bubble" id="bubble">阿獭正在翻看旅行手册</div>
+          <div class="clovers" id="clovers"></div>
+          <div class="garden-note" id="garden-note"></div>
+          <button class="visitor" id="visitor" hidden aria-label="招待小兔">
+            <span data-icon="rabbit"></span>
+            <span class="visitor-label">来串门啦</span>
+          </button>
+          <div class="travel-sign" id="travel-sign" hidden>
+            <span data-icon="mail"></span>
+            <strong>阿獭出门旅行啦</strong>
+            <small>风会替你捎去问候</small>
+          </div>
+        </div>
+      </section>
+      <div class="garden-actions">
+        <button class="scene-label bag-hotspot" id="bag-hotspot">
+          <span data-icon="bag"></span>
+          准备行囊
+        </button>
+      </div>
+      <header class="hud">
+        <div class="profile" role="button" tabindex="0" aria-label="查看小屋成长">
+          <div class="avatar"><img data-asset="otter" alt="" /></div>
+          <div>
+            <h1>小獭远行</h1>
+            <span>
+              <b id="profile-level">LV.1</b>
+              <span id="profile-subtitle">阿獭的河畔小屋</span>
+            </span>
+          </div>
+        </div>
+        <div class="hud-right">
+          <button class="wallet" id="wallet" aria-label="幸运叶，打开杂货铺">
+            <span data-icon="leaf"></span>
+            <b id="leaves">180</b>
+            <span class="wallet-plus" data-icon="plus"></span>
+          </button>
+          <button class="round" id="help" aria-label="玩法与设置">
+            <span data-icon="help"></span>
+          </button>
+        </div>
+      </header>
+      <div class="ambience-actions" role="group" aria-label="昼夜与声音控制">
+        <button class="sound-button" id="sound-button" aria-label="开启背景音乐">
+          <span data-icon="mute"></span>
+          静音
+        </button>
+        <button class="weather" id="weather-button" aria-label="调整昼夜与音乐">
+          <span id="weather-icon" data-icon="sun"></span>
+          <span id="weather-label">晴 · 微风</span>
+        </button>
+      </div>
+      <div class="mode-control" role="group" aria-label="快速体验设置">
+        <label class="mode-toggle">
+          <input id="fast-mode" type="checkbox" />
+          <span>快速体验</span>
+        </label>
+      </div>
+      <button class="friends-button" id="friends-button" aria-label="朋友手册">
+        <span data-icon="rabbit"></span>
+        <small>朋友</small>
+        <b id="friend-dot" hidden>!</b>
+      </button>
+      <button class="life-button" id="life-button" aria-label="阿獭的小日常">
+        <span data-icon="home"></span>
+        <small>日常</small>
+      </button>
+      <button class="mailbox" id="mailbox" aria-label="打开信箱">
+        <span data-icon="mail"></span>
+        <small>信箱</small>
+        <b id="mail-badge" hidden>!</b>
+      </button>
+      <section class="home-status">
+        <div class="status-mark" id="status-icon" data-icon="home"></div>
+        <div class="status-copy">
+          <h2 id="status-title">阿獭在家</h2>
+          <p id="status-description">装一份便当，慢慢出发。</p>
+        </div>
+        <button class="primary" id="primary">准备行囊</button>
+        <div class="trip-progress" id="trip-progress" hidden><i></i></div>
+      </section>
+      <nav class="bottom-nav" aria-label="游戏菜单">
+        <button data-panel="bag">
+          <span class="nav-icon" data-icon="bag"></span>
+          <span>行囊</span>
+        </button>
+        <button data-panel="shop">
+          <span class="nav-icon" data-icon="shop"></span>
+          <span>杂货铺</span>
+        </button>
+        <button data-panel="album">
+          <span class="nav-icon" data-icon="album"></span>
+          <span>明信片</span>
+          <b id="album-count">0</b>
+        </button>
+        <button data-panel="collection">
+          <span class="nav-icon" data-icon="collection"></span>
+          <span>收藏柜</span>
+          <b id="growth-dot" hidden>!</b>
+        </button>
+        <button data-panel="journal">
+          <span class="nav-icon" data-icon="journal"></span>
+          <span>旅行手记</span>
+        </button>
+      </nav>
+    </main>
+    <div class="panel-layer" id="panel-layer" hidden>
+      <section
+        class="game-panel"
+        id="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        tabindex="-1">
+        <header class="modal-head">
+          <div class="panel-emblem" id="panel-emblem"></div>
+          <div>
+            <small id="modal-kicker">出发前的小仪式</small>
+            <h2 id="modal-title">准备行囊</h2>
+          </div>
+          <button id="close" class="close-button" aria-label="返回小屋">
+            <span data-icon="close"></span>
+          </button>
+        </header>
+        <div class="panel-scroll" id="modal-body"></div>
+      </section>
+    </div>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./src/bootstrap.js"></script>
+  </body>
+</html>

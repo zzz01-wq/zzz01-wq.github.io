@@ -1,0 +1,273 @@
+/* Keep the garden hint in its own slot, above the clover hit area. */
+.game {
+  --actions-bottom: 220px;
+  --scene-bottom: 280px;
+}
+.play-space {
+  --clover-area-bottom: 4%;
+  --clover-area-height: 100px;
+}
+.garden-actions {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: var(--actions-bottom);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  z-index: 4;
+  pointer-events: none;
+}
+.play-space .clovers {
+  bottom: var(--clover-area-bottom);
+  height: var(--clover-area-height);
+}
+.play-space .garden-note {
+  left: 4%;
+  bottom: calc(var(--clover-area-bottom) + var(--clover-area-height) + 10px);
+  max-width: 240px;
+  margin: 0;
+  line-height: 1.65;
+  text-align: center;
+  text-wrap: balance;
+}
+.garden-actions .scene-label {
+  position: static;
+  transform: none;
+  flex: none;
+  min-height: 44px;
+  pointer-events: auto;
+}
+/* Scale the complete portrait within the circle instead of enlarging and cropping it. */
+.avatar {
+  display: grid;
+  place-items: center;
+  padding: 2px;
+}
+.avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  object-fit: contain;
+  object-position: center;
+}
+.visitor-label {
+  white-space: normal;
+  text-align: center;
+}
+@media (max-width: 700px) {
+  .game {
+    min-height: 560px;
+  }
+  body {
+    overflow-y: auto;
+  }
+  .garden-actions {
+    left: 16px;
+    right: 16px;
+    gap: 18px;
+    justify-content: space-between;
+  }
+  .play-space {
+    --clover-area-bottom: 5%;
+    --clover-area-height: 90px;
+  }
+  .play-space .garden-note {
+    left: 4%;
+    min-width: 0;
+    max-width: 210px;
+    font-size: 11px;
+    padding: 7px 10px;
+  }
+  .garden-actions .scene-label {
+    font-size: 12px;
+    padding: 6px 12px 6px 7px;
+  }
+  .play-space {
+    bottom: var(--scene-bottom);
+  }
+  .clovers {
+    bottom: var(--clover-area-bottom);
+  }
+  .visitor {
+    right: 7%;
+    bottom: 0;
+    width: 62px;
+  }
+  .visitor > .cast-sprite:first-child {
+    width: 62px;
+  }
+  .visitor-label {
+    max-width: 88px;
+    font-size: 10px;
+    padding: 3px 6px;
+  }
+  .status-bubble {
+    top: 20%;
+  }
+  .otter {
+    --actor-size: 170px;
+    top: 48%;
+    left: calc(50% - var(--actor-size) / 2);
+    width: var(--actor-size);
+    height: var(--actor-size);
+  }
+  .mailbox,
+  .friends-button,
+  .life-button {
+    right: 10px;
+  }
+  .hud .wallet {
+    min-width: 100px;
+  }
+  .wallet b {
+    min-width: 0;
+    font-size: clamp(13px, 4vw, 16px);
+  }
+}
+@media (max-width: 370px) {
+  .garden-actions {
+    left: 12px;
+    right: 12px;
+    gap: 16px;
+  }
+  .play-space .garden-note {
+    font-size: 10px;
+  }
+  .garden-actions .scene-label {
+    padding-right: 9px;
+    font-size: 11px;
+  }
+  .hud .wallet {
+    min-width: 90px;
+  }
+  .avatar {
+    width: 34px;
+    height: 34px;
+  }
+}
+@media (max-height: 690px) and (max-width: 700px) {
+  .otter {
+    --actor-size: 125px;
+    top: 36%;
+  }
+  .status-bubble {
+    top: 9%;
+    font-size: 10px;
+    max-width: calc(100% - 120px);
+  }
+  .clovers {
+    height: 60px;
+  }
+  .play-space {
+    --clover-area-bottom: 2%;
+    --clover-area-height: 60px;
+  }
+  .visitor > .cast-sprite:first-child {
+    width: 50px;
+  }
+  .life-button {
+    top: calc(260px + var(--safe-top));
+  }
+}
+@media (max-height: 500px) and (min-width: 600px) {
+  .game {
+    min-height: 360px;
+  }
+  .garden-actions {
+    left: 20px;
+    right: auto;
+    width: 320px;
+    gap: 16px;
+  }
+  .play-space .garden-note {
+    font-size: 10px;
+  }
+  .garden-actions .scene-label {
+    font-size: 11px;
+  }
+  .visitor {
+    right: 18%;
+    bottom: 30px;
+  }
+  .life-button {
+    top: 200px;
+  }
+  .friends-button {
+    top: 120px;
+    right: 85px;
+  }
+  .mailbox {
+    top: 120px;
+  }
+}
+@media (max-height: 690px) and (max-width: 599px) {
+  .mailbox {
+    top: calc(120px + var(--safe-top));
+  }
+  .mailbox > span,
+  .friends-button > span {
+    width: 42px;
+    height: 42px;
+  }
+  .friends-button {
+    top: calc(183px + var(--safe-top));
+  }
+  .life-button {
+    top: calc(246px + var(--safe-top));
+  }
+  .life-button > span {
+    width: 34px;
+    height: 34px;
+  }
+  .friends-button small,
+  .life-button small {
+    font-size: 10px;
+    padding: 2px 10px;
+  }
+}
+@media (max-height: 500px) and (min-width: 600px) {
+  body {
+    overflow-y: auto;
+  }
+  .home-status {
+    width: calc(50% - 30px);
+  }
+  .bottom-nav {
+    width: calc(50% - 25px);
+  }
+  .garden-actions {
+    width: calc(50% - 30px);
+  }
+}
+
+/* Keep the actor lower in the scene without changing its walk animations. */
+@media (min-width: 701px) and (min-height: 501px) {
+  .otter {
+    top: 48%;
+    width: 195px;
+    height: 195px;
+    left: calc(50% - 97.5px);
+  }
+  .status-bubble {
+    top: 25%;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+@media (max-height: 500px) and (min-width: 600px) {
+  .otter {
+    width: 130px;
+    height: 130px;
+    left: calc(50% - 65px);
+    top: 16%;
+  }
+  .status-bubble {
+    top: -3%;
+  }
+}
