@@ -1,0 +1,101 @@
+/* Cross-platform presentation layer. No gameplay or save-state changes. */
+:root{--ink:#D7D6C8;--muted:#BFC0B4;--gold:#B9AD70;--red:#8D5149;--panel:rgba(10,15,12,.94);--edge:#4D5142;--key:#E5E0CA}
+html,body{min-width:0;max-width:100%;width:100%;overflow-x:hidden;background:#090F0C;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+.game{width:100vw;min-width:0;max-width:100%;background:#101915}
+.hud,.title-row,.status-row,.cat-status,.story,.story-body,.choices,.places{min-width:0}
+.game-title{color:var(--key)}.game-title small{color:#969d8f}
+.tool{min-width:44px;min-height:48px;width:48px;height:52px;background:transparent;border-color:transparent;box-shadow:none}
+.tool .ui-icon{width:23px;height:23px;filter:grayscale(.45) brightness(.9)}
+.tool>span{color:#BFC0B4;font-size:12px}.tool b{background:#68654E;color:#E5E0CA}
+.cat-status{color:#BFC0B4;gap:8px}#care{color:#BFC0B4}#focus{color:#aeb7a9}
+.cat-mark{background-image:url('assets/ui-icons/cat.png');box-shadow:none;border-radius:0;filter:brightness(1.12) drop-shadow(0 0 1px #b9ad7080)}
+.day-track i,.mind-track i{background:#b2b598}#roomname{color:#E5E0CA}
+.story{background:var(--panel);border-color:#4D514255;border-top-color:#68654E; border-bottom-color:transparent;box-shadow:0 5px 18px #0004}
+.story:before,.story:after{border-color:#a79b6d80}
+#storytype{color:#c5bb96}#save{color:#8e9888;font-size:10px}
+.story p{color:#D7D6C8;line-height:1.8}.choices{gap:8px}
+.choices button{min-height:50px;background:#30382b52;border-color:#4D514280;color:#d9d5bd;box-shadow:none;line-height:1.7}
+.choices button:first-child{background:#46493445;border-color:#68654e99}
+.choices button:after{color:#B9AD70}
+.places{gap:0;padding:5px 0 0;border-top:1px solid #4d514266;background:#0b110eaa}
+.places:before{display:none}.places button{min-width:44px;min-height:60px;height:60px;border:0;background:transparent;box-shadow:none;color:#a8b0a2}
+.places button+button{border-left:1px solid #4d514222}
+.places button.active{color:#C3B77C;background:#77704315;border:0;box-shadow:inset 0 -1px #B9AD70}
+.places .ui-icon{width:24px;height:24px}.places button:not(.active) .ui-icon{opacity:.84;filter:grayscale(.5) brightness(.86)}
+.places span{font-size:13px}.places small{color:#a97365;font-size:10px}
+button{transition:background-color 140ms,border-color 140ms,color 140ms,filter 140ms,transform 140ms}
+button:active{transform:scale(.98);filter:brightness(1.08)}
+.choices button:active,.tool:active,.places button:active{background-color:#9a956024;border-color:#b9ad7088}
+@media(hover:hover) and (pointer:fine){
+ .choices button:hover,.tool:hover,.places button:hover{background:#8580611c;border-color:#9d966b77;color:#C3B77C;filter:brightness(1.06)}
+}
+/* Compact markers with generous, invisible hit regions; names never intercept a tap. */
+.hotspot{width:48px;min-width:48px;height:48px;min-height:48px;padding:0;gap:0;overflow:visible;filter:none}
+.hotspot i{width:12px;height:12px;border-color:#c8c4a2;box-shadow:0 0 0 4px #e0dcc60c}
+.hotspot span{position:absolute;bottom:calc(100% - 2px);left:50%;transform:translate(-50%,4px);font-size:12px;line-height:1.4;letter-spacing:1px;background:#0b110ee8;border:0;border-bottom:1px solid #68654e80;padding:5px 9px;opacity:0;visibility:hidden;pointer-events:none;transition:opacity 140ms,transform 140ms,visibility 140ms}
+.hotspot:focus-visible span,.hotspot.is-revealed span{opacity:1;visibility:visible;transform:translate(-50%,0)}
+.hotspot:active{transform:translate(-50%,-50%) scale(.98)}
+@media(hover:hover) and (pointer:fine){.hotspot:hover span{opacity:1;visibility:visible;transform:translate(-50%,0)}.hotspot:hover i{border-color:#D2C796;box-shadow:0 0 0 5px #d2c79612}}
+.hotspot[data-act='cat'],.hotspot[data-act='mirror']{width:60px;height:56px;min-height:56px}
+.paperpoint i{background:#D2C796;box-shadow:0 0 13px #d2c79624;animation:clue-breath 3s ease-in-out infinite}
+@keyframes clue-breath{0%,100%{opacity:.85}50%{opacity:1}}
+/* Keep light sources local; avoid a uniform green wash. */
+#wall stop:first-child{stop-color:#3B443B}#wall stop:last-child{stop-color:#303A32}
+#floor stop:first-child{stop-color:#3e4035}#floor stop:last-child{stop-color:#111915}
+#glass stop:first-child{stop-color:#a2b3b0}#glass stop:last-child{stop-color:#70817D}
+#lamp stop:first-child{stop-color:#d0b67d;stop-opacity:.38}
+#door-art{filter:brightness(.83)}
+.light-leak{opacity:.075;animation:none;background:linear-gradient(120deg,transparent,#9aafae33,transparent);filter:blur(16px)}
+.scene:after{box-shadow:inset 0 0 80px #090f0c70;background:linear-gradient(180deg,#090f0cc9,transparent 27%,transparent 64%,#090f0caa)}
+.game[data-visual-state='night'] .room-art{filter:brightness(.67) saturate(.68)}
+.game[data-visual-state='strange'] .room-art{filter:saturate(.62) contrast(1.07)}
+.game[data-visual-state='danger'] .story{border-top-color:#8D5149}
+.game[data-visual-state='danger'] .mind-track i{background:#8D5149}
+.game[data-visual-state='critical'] .story{border-top-color:#af685c;box-shadow:inset 0 0 20px #8d514915}
+.game[data-visual-state='critical'] #sanity{color:#ce8a7d}
+.game[data-visual-state='critical'] .mind-track i{background:#af685c}
+/* Desktop keeps the full status text, with tools at the far right. */
+@media(min-width:768px){.hud{max-width:none}.utilities{margin-left:auto}.cat-status{font-size:12px}.status-row{max-width:440px}.bottom-ui{max-width:900px}.game-title{font-size:25px}}
+/* Mobile HUD has an explicit type scale, independent of the room's size. */
+@media(max-width:767px){
+ .hud{left:calc(var(--safe-left) + 12px);right:calc(var(--safe-right) + 12px);top:calc(var(--safe-top) + 10px);max-width:none}
+ .game-title{font-size:19px;letter-spacing:1px;white-space:nowrap}.game-title small{font-size:10px;letter-spacing:1px;display:block;line-height:1.7}
+ .title-row{gap:6px}.utilities{gap:0;flex-shrink:0}.tool{width:44px;min-width:44px;height:48px}.tool>span{font-size:11px}.tool .ui-icon{width:21px;height:21px}
+ .status-row{gap:18px;margin-top:12px;max-width:none;align-items:center}.day-status{gap:4px}#day{font-size:16px;letter-spacing:0}#time{font-size:14px;line-height:23px}
+ .mind-status{width:92px;flex-shrink:0}.mind-status>div:first-child{margin-bottom:5px}.mind-status span{font-size:12px}#sanity{font-size:16px}#sanity small{display:none}
+ .cat-status{gap:6px;font-size:11px;line-height:20px;white-space:nowrap;margin-top:6px}.cat-mark{width:20px;flex-basis:20px;height:18px}#care{margin-left:auto}#focus{margin-left:7px}
+ [data-compact]{font-size:0!important}[data-compact]:after{content:attr(data-compact);font-size:11px}
+ #time[data-compact]:after{font-size:14px}
+ .location{gap:8px}#roomname{font-size:17px;letter-spacing:3px}.location small,#erosion{font-size:10px;letter-spacing:1px}
+ .bottom-ui{max-width:none;padding-left:calc(var(--safe-left) + 10px);padding-right:calc(var(--safe-right) + 10px);padding-bottom:calc(8px + var(--safe-bottom))}
+ .story{padding:11px 13px}.story p{font-size:16px;line-height:1.8}.choices button{font-size:15px;min-height:50px;padding:10px 27px 10px 12px}
+ .story-body{scrollbar-width:thin}.places{margin-top:8px}.places button{height:58px;min-height:58px}.places .ui-icon{width:23px;height:23px}.places span{font-size:12px;letter-spacing:2px}
+ .pause-panel>button,.close{min-height:48px}.pause-title button,.dev-panel-head button{min-width:44px;min-height:44px}
+ .note-modal .source-note .note-door-rules>li,.note-modal .source-note .note-diary-entry p,.note-modal .source-note .note-copy p{font-size:15px;overflow-wrap:anywhere}
+ .note-modal .source-note .note-escape{white-space:normal;flex-wrap:wrap;gap:8px;padding-left:0}
+}
+@media(max-width:390px){.choices{grid-template-columns:minmax(0,1fr)}.game-title{font-size:18px}.game-title small{font-size:10px}.status-row{gap:12px}.cat-status{gap:4px}#focus{margin-left:4px}}
+/* Portrait composition uses the original room plane; labels stay above their targets. */
+@media(orientation:portrait){
+ .scene-world{left:-8%;right:-8%;top:var(--scene-top,160px);bottom:var(--scene-bottom,280px)}
+ .hotspot[data-act='mirror']{left:37%;top:31%}.hotspot[data-act='bedroom']{left:54%;top:47%}
+ .hotspot[data-act='cat']{left:54%;top:71%}.hotspot[data-act='paper']{left:40%;top:85%}
+ .hotspot[data-act='door']{left:23%;top:43%}.hotspot[data-act='window']{left:80%;top:35%}
+}
+@media(orientation:portrait) and (max-height:700px){
+ .game{--dialogue-height:200px}.game-title small{display:none}.cat-status{margin-top:4px}.status-row{margin-top:7px}
+ .hotspot[data-act='cat'],.hotspot[data-act='mirror']{width:48px;height:48px;min-height:48px}
+}
+@media(orientation:landscape) and (max-height:600px){
+ .hud{left:calc(var(--safe-left) + 12px);right:auto;width:calc(53% - var(--safe-left) - 20px)}
+ .game-title{font-size:18px}.game-title small{display:none}.utilities{gap:0}.tool{width:44px;min-width:44px;height:48px}
+ .status-row{margin-top:7px;gap:12px;max-width:none}.cat-status{font-size:11px;gap:5px}
+ .bottom-ui{width:44%;right:var(--safe-right);padding:0 10px calc(8px + var(--safe-bottom));max-width:none}
+ .game{--dialogue-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 94px)}
+ .story p{font-size:15px}.choices{grid-template-columns:1fr}.choices button{font-size:14px;min-height:48px}
+ .places button{min-height:56px;height:56px}.places .ui-icon{width:21px;height:21px}.places span{font-size:12px;letter-spacing:0}
+ .scene-world{right:43%;left:-3%;top:30%;bottom:3%}
+ .hotspot[data-act='cat'],.hotspot[data-act='mirror']{width:48px;height:48px;min-height:48px}
+ .location{top:calc(var(--scene-top,135px) + 2px)}
+}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}

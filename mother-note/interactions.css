@@ -1,0 +1,34 @@
+/* The object is the target. No geometric marker or permanent object-name label. */
+.scene-world .hotspot{position:absolute;left:var(--object-x);top:var(--object-y);width:max(48px,var(--object-width));height:max(48px,var(--object-height));min-width:48px;min-height:48px;transform:translate(-50%,-50%);padding:0;border:0;background:none;box-shadow:none;filter:none;outline-offset:2px;display:flex;align-items:center;justify-content:center}
+.scene-world .hotspot[data-act='door']{--object-x:23.4%;--object-y:44.8%;--object-width:14%;--object-height:44%}
+.scene-world .hotspot[data-act='mirror']{--object-x:38.2%;--object-y:35.3%;--object-width:8%;--object-height:21%}
+.scene-world .hotspot[data-act='bedroom']{--object-x:51.6%;--object-y:42.5%;--object-width:13%;--object-height:31%}
+.scene-world .hotspot[data-act='window']{--object-x:79.4%;--object-y:37.5%;--object-width:16.5%;--object-height:36%}
+.scene-world .hotspot[data-act='cat']{--object-x:51.5%;--object-y:68%;--object-width:12%;--object-height:12%}
+.scene-world .hotspot[data-act='paper']{--object-x:43.5%;--object-y:82%;--object-width:6%;--object-height:6%}
+.action-icon{display:block;width:24px;height:24px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.hotspot .action-icon{color:#E5D7A2;opacity:.88;transition:opacity 160ms,color 160ms;filter:drop-shadow(0 1px 2px #050907) drop-shadow(0 0 3px #c9bc8b99)}
+.hotspot:focus-visible .action-icon,.hotspot:active .action-icon{opacity:1;color:#F0DFA9;filter:drop-shadow(0 1px 2px #080c0a) drop-shadow(0 0 4px #d4c48799)}
+@media(hover:hover) and (pointer:fine){.hotspot .action-icon{opacity:0}.hotspot:hover .action-icon{opacity:.9;color:#C3B77C}}
+.scene-world .hotspot:active{transform:translate(-50%,-50%) scale(.98);background:none;filter:none}
+.interaction-caption{position:absolute;z-index:7;display:flex;align-items:center;gap:7px;padding:4px 7px;max-width:calc(100% - 16px);width:max-content;pointer-events:none;background:rgba(8,12,10,.72);color:#C3B77C;font-size:13px;line-height:22px;border:0;border-bottom:1px solid rgba(185,173,112,.25);box-shadow:none;animation:investigate-in 150ms ease-out}
+.interaction-caption span{white-space:nowrap}.interaction-caption .action-icon{color:#C9C8BB}
+#mirror-art,#window-art,#cat-art,#bedroom-art,#paper-art,#door-art{transition:filter 150ms,opacity 150ms}
+.game[data-investigate='mirror'] #mirror-art,.game[data-investigate='window'] #window-art,.game[data-investigate='cat'] #cat-art,.game[data-investigate='bedroom'] #bedroom-art{filter:brightness(1.12)}
+.game[data-investigate='door'] #door-art{filter:brightness(1.05)}
+#paper-art{filter:brightness(1.07);animation:paper-light 3s ease-in-out infinite}
+.game[data-investigate='paper'] #paper-art{filter:brightness(1.16);animation:none}
+@keyframes paper-light{0%,100%{opacity:.88}50%{opacity:1}}
+@keyframes investigate-in{from{opacity:0;translate:0 1px}to{opacity:1;translate:0 0}}
+@media(orientation:portrait){
+ .scene-world .hotspot[data-act='cat']{--object-x:54%;--object-y:69%;--object-width:10%;--object-height:10%}
+ .scene-world .hotspot[data-act='paper']{--object-x:40%;--object-y:84%}
+ .scene-world .hotspot[data-act='bedroom']{--object-y:42%;--object-height:26%}
+ .interaction-caption{font-size:12px}
+}
+@media(orientation:landscape) and (max-height:600px){
+ .scene-world .hotspot[data-act='cat']{--object-x:54%;--object-width:10%;--object-height:10%}
+ .scene-world .hotspot[data-act='paper']{--object-x:40%;--object-y:85%}
+ .scene-world .hotspot[data-act='bedroom']{--object-y:41%;--object-height:25%}
+}
+@media(prefers-reduced-motion:reduce){#paper-art,.interaction-caption{animation:none}#mirror-art,#window-art,#cat-art,#bedroom-art,#paper-art,#door-art,.action-icon{transition:none}}

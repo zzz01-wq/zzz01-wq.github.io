@@ -1,0 +1,18 @@
+/* The event illustration occupies the existing scene slot, never pushes the UI. */
+.event-illustration{position:absolute;inset:0;margin:0;z-index:4;display:flex;align-items:center;justify-content:center;background:#090f0c;overflow:hidden}
+.event-image{display:block;width:100%;height:100%;object-fit:contain;animation:event-picture-in 350ms ease-out}
+.event-art-caption{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 16px;background:rgba(8,12,10,.84);color:#d7d0b8;border-top:1px solid #68654e50}
+.event-art-title{font-size:14px;letter-spacing:2px;line-height:1.6}
+.event-art-close{min-height:44px;min-width:88px;padding:8px;font-size:12px;color:#bfc0b4;border:0;background:none}
+.event-art-close:hover{color:#c3b77c}
+.event-art-active .scene-world{visibility:hidden;pointer-events:none}
+.event-art-active .interaction-caption,.event-art-active .light-leak,.event-art-active .explore-hint{display:none}
+.ending-illustration{margin:0 0 20px}.ending-illustration img{display:block;width:100%;height:auto;aspect-ratio:3/2;object-fit:contain;background:#090f0c}
+@media(max-width:999px),(max-height:600px){
+ .event-illustration{top:var(--scene-top,155px);bottom:var(--scene-bottom,270px)}
+ .event-art-caption{padding:2px 10px}.event-art-title{font-size:12px;letter-spacing:1px}
+ .event-art-close{font-size:11px;min-width:76px}
+}
+@media(orientation:landscape) and (max-height:600px){.event-illustration{left:0;right:44%;top:var(--scene-top,120px);bottom:4px}}
+@keyframes event-picture-in{from{opacity:.4}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.event-image{animation:none}}

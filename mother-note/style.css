@@ -99,6 +99,96 @@ dialog .meta{font-size:12px}
  #erosion{margin-left:3px}
 }
 
+/* Generated brass icons are tightly cropped from the atlas so their small-size silhouettes stay readable. */
+.ui-icon{display:block;width:26px;height:26px;flex:0 0 auto;background-repeat:no-repeat;background-position:center;background-size:contain;filter:sepia(.18) saturate(.68) brightness(.86) contrast(1.05);image-rendering:auto}
+.ui-icon--living{background-image:url("assets/ui-icons/living.png")}
+.ui-icon--bedroom{background-image:url("assets/ui-icons/bedroom.png")}
+.ui-icon--kitchen{background-image:url("assets/ui-icons/kitchen.png")}
+.ui-icon--door{background-image:url("assets/ui-icons/door.png")}
+.ui-icon--wardrobe{background-image:url("assets/ui-icons/wardrobe.png")}
+.ui-icon--paper{background-image:url("assets/ui-icons/paper.png")}
+.ui-icon--journal{background-image:url("assets/ui-icons/journal.png")}
+.ui-icon--menu{background-image:url("assets/ui-icons/menu.png")}
+.tool .ui-icon{width:25px;height:25px}
+.tool:hover .ui-icon,.tool:focus-visible .ui-icon{filter:sepia(.25) saturate(1) brightness(1.12)}
+.places{position:relative;gap:6px;margin-top:12px;padding:7px 8px 0;border-top:1px solid #a4ad8150}
+.places:before{content:'';position:absolute;left:7%;right:7%;top:-1px;height:1px;background:linear-gradient(90deg,transparent,#c9bc8b66,transparent);pointer-events:none}
+.places button{width:auto;flex:1;min-height:68px;border:1px solid #9da77d2f;background:linear-gradient(180deg,#18241bb8,#0b1210d9);transition:background .25s,border-color .25s,transform .2s,filter .25s}
+.places button:hover{border-color:#b7b27c66;background:linear-gradient(180deg,#253324cc,#0f1712e8)}
+.places button.active{border-color:#c2b37d80;background:linear-gradient(180deg,#5f603a66,#19251aa8);box-shadow:inset 0 -2px #d1c18d,0 0 16px #a99d6020}
+.places button:not(.active) .ui-icon{opacity:.68}
+.places button.active .ui-icon{filter:sepia(.25) saturate(1.08) brightness(1.08)}
+.places .ui-icon{width:29px;height:29px}
+
+/* Same-page developer inspector. It stays quiet until devMode() is enabled. */
+#dev-panel{position:absolute;top:calc(var(--safe-top) + 83px);right:calc(var(--safe-right) + 25px);z-index:10;width:min(390px,calc(100% - 32px));max-height:min(78dvh,680px);display:flex;flex-direction:column;overflow:hidden;padding:11px 13px 12px;background:#0b110ef2;border:1px solid #d08b6f9c;box-shadow:0 14px 50px #000b,inset 0 0 18px #b25e4312;color:#e8dfc8;font:11px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
+#dev-panel[hidden]{display:none}
+.dev-panel-head{display:flex;align-items:center;justify-content:space-between;padding-bottom:7px;margin-bottom:8px;border-bottom:1px solid #a8624f66;color:#e19b7e;letter-spacing:.12em}
+.dev-panel-head button{min-width:34px;min-height:30px;color:#d7aa91;font:22px/1 sans-serif}
+#dev-readout{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;color:#c8c9ad}
+#dev-readout span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#dev-readout .dev-wide{grid-column:1/-1;color:#dfc58e}
+#dev-panel .dev-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;margin:10px 0 8px;padding-bottom:5px;border-bottom:1px solid #a8624f44}
+#dev-panel .dev-tabs button{min-width:0;min-height:32px;padding:4px 3px;border:1px solid #6e675044;background:#172019;color:#98a08d;font:10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0}
+#dev-panel .dev-tabs button[aria-selected="true"]{border-color:#d08b6f99;background:#56382e66;color:#f0c0a5;box-shadow:inset 0 -2px #d08b6f}
+.dev-workspace{display:flex;min-height:0;flex:1;overflow:hidden}
+.dev-tab-panel{display:flex;flex-direction:column;min-width:0;min-height:0;width:100%;gap:7px}
+.dev-tab-panel[hidden]{display:none}
+.dev-note{margin:2px 0 0!important;color:#a4ad99!important;line-height:1.75}
+.dev-filter-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;flex:0 0 auto}
+.dev-filter-row button{min-width:0;min-height:30px;padding:4px 2px;border:1px solid #6e675044;background:#111a14;color:#a6ad98;font:10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace}
+.dev-filter-row button.is-selected{border-color:#c7b77e99;background:#4c49315c;color:#ebddac}
+.dev-list{display:flex;flex-direction:column;gap:2px;min-height:0;max-height:208px;overflow:auto;padding-right:2px;scrollbar-width:thin;scrollbar-color:#84775c88 transparent}
+.dev-list-row{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:34px;padding:6px 7px;border:1px solid #59604b44;background:#111a14;color:#c4c8b5;text-align:left;font:10px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;transition:background .14s,border-color .14s,color .14s}
+.dev-list-row:hover,.dev-list-row:focus-visible{border-color:#bba96f99;background:#292c1d;color:#f0e5c1}
+.dev-list-row.is-selected{border-color:#d08b6f99;background:#3a292466;color:#f1c0a3}
+.dev-row-main{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dev-row-meta{flex:0 0 auto;color:#858e7c;font-size:9px}
+.dev-list-row.is-selected .dev-row-meta{color:#cfaa91}
+.dev-detail{min-height:88px;max-height:150px;overflow:auto;padding:8px 2px 0;border-top:1px solid #a8624f44;scrollbar-width:thin;scrollbar-color:#84775c88 transparent}
+.dev-detail h4{margin:0 0 5px;color:#edc4a8;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
+.dev-detail p{margin:3px 0;color:#b7bdab;font:10px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace}
+.dev-detail .dev-detail-meta{color:#dfc58e}
+.dev-detail-actions{display:flex;gap:5px;margin-top:7px}
+.dev-detail-actions button,#dev-stop-sounds{min-height:29px;padding:4px 9px;border:1px solid #b6a66f88;background:#38362188;color:#eadba7;font:10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace}
+.dev-detail-actions button:hover,#dev-stop-sounds:hover{border-color:#dfc58e;background:#5a4e2c99;color:#fff2c4}
+.dev-sound-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-bottom:6px;color:#a4ad99;font-size:10px}
+.dev-sound-toolbar span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#dev-panel>p{margin:9px 0 0;color:#929d88;font-size:10px}
+#dev-panel code{color:#dfc58e}
+@media(orientation:portrait){
+ .tool .ui-icon{width:23px;height:23px}
+ .places{padding-top:5px}
+ .places button{min-height:64px}
+ .places .ui-icon{width:27px;height:27px}
+ #dev-panel{top:calc(var(--safe-top) + 74px);right:calc(var(--safe-right) + 12px);width:min(300px,calc(100% - 24px))}
+}
+@media(orientation:portrait) and (max-height:700px){
+ .places button{min-height:57px}
+ .places .ui-icon{width:24px;height:24px}
+ #dev-panel{top:calc(var(--safe-top) + 60px)}
+}
+@media(orientation:landscape) and (max-height:600px){
+ .places{padding-top:4px}
+ .places button{min-height:52px}
+ .places .ui-icon{width:22px;height:22px}
+ #dev-panel{top:calc(var(--safe-top) + 62px);right:calc(var(--safe-right) + 14px);width:min(340px,calc(100% - 28px))}
+}
+
+/* The cat marker is a generated black-cat silhouette, not a text glyph. */
+.cat-mark{display:inline-block;width:24px;height:20px;flex:0 0 24px;background:url("assets/ui-icons/cat.png") center/contain no-repeat;filter:brightness(.88) contrast(1.18) sepia(.1) saturate(.64) drop-shadow(0 1px 1px #000b)}
+/* Keep inactive destinations recessed so the active room remains the visual anchor. */
+.places button:not(.active) .ui-icon{opacity:.58;filter:sepia(.1) saturate(.42) brightness(.7) contrast(1.08)}
+@media(max-width:360px){.cat-mark{width:21px;height:18px;flex-basis:21px}}
+
+/* Improve inactive icon legibility without stealing the active room's emphasis. */
+.places button:not(.active) .ui-icon{opacity:.78;filter:sepia(.14) saturate(.65) brightness(.86) contrast(1.1)}
+/* A soft brass halo keeps the black cat readable against the deep-green HUD. */
+.cat-mark{width:24px;height:20px;flex-basis:24px;background-image:radial-gradient(ellipse,#c8b97b55 0%,#c8b97b20 46%,transparent 74%),url("assets/ui-icons/cat.png");background-size:100% 100%,contain;background-position:center,center;background-repeat:no-repeat;filter:brightness(1.08) contrast(1.22) sepia(.1) saturate(.75) drop-shadow(0 0 2px #d4c58399);box-shadow:0 0 7px #c3b47a42;border-radius:50%}
+@media(max-width:360px){.cat-mark{width:21px;height:18px;flex-basis:21px}}
+/* Desktop HUD spans the viewport so the paper/journal/menu tools sit at the right edge. */
+@media(min-width:900px){.hud{max-width:none}.title-row{width:100%}.utilities{margin-left:auto}}
+
 /* Source-note facsimiles keep the three reference notes' own headers, spacing, and marks. */
 .note-modal .source-note{padding:21px 29px 24px 31px;min-height:0;background:#000;overflow-wrap:normal}
 .note-modal .source-note .note-source-header{display:block}
