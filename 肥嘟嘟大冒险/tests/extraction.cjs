@@ -109,6 +109,25 @@ closeInventory();update(0);assert.equal(phase,'skill');assert.equal(currentSkill
 // Long searches reveal only upon their own duration, without an early high-grade reveal.
 openInventory(queueChest);updateInventory(9.9);assert(!queueChest.contents[1].revealed);updateInventory(.11);assert(queueChest.contents[1].revealed);closeInventory();
 console.log('PASS: five chest designs, chest-grade loot, distinct search times, uninterrupted searching with queued multiple upgrades, and ordered skill selection after closing');
+
+// Old saves gain new default fields without losing their coins or previous upgrades.
+const retainedProfile={...profile};const migrated=normalizeProfile({coins:798,health:2,kit:1,speed:3});assert.equal(migrated.coins,798);assert.equal(migrated.health,2);assert.equal(migrated.kit,1);assert.equal(migrated.speed,3);assert.equal(migrated.bag,0);assert.equal(migrated.search,0);assert.equal(migrated.trade,0);assert.equal(migrated.radar,0);
+const bounded=normalizeProfile({coins:-1,bag:99,search:99,trade:-2,radar:'invalid'});assert.equal(bounded.coins,0);assert.equal(bounded.bag,5);assert.equal(bounded.search,3);assert.equal(bounded.trade,0);assert.equal(bounded.radar,0);
+clearRun();profile=normalizeProfile(null);phase='briefing';profile.coins=149;buyTraining('bag');assert.equal(profile.bag,0);assert.equal(profile.coins,149);
+profile.coins=100000;const bagUpgrade=training.find(t=>t.key==='bag');
+for(let rank=1;rank<=5;rank++){const before=profile.coins,price=trainingPrice(bagUpgrade);buyTraining('bag');assert.equal(profile.bag,rank);assert.equal(bagCapacity(),16+rank*4);assert.equal(profile.coins,before-price)}const maxedCoins=profile.coins;buyTraining('bag');assert.equal(profile.coins,maxedCoins);assert.equal(bagCapacity(),36);
+// Expanded slots appear and the capacity guard uses the new value, not the old 16.
+player=createActor(0,0,0,'upgrades',0);player.maxHp=3;phase='play';openInventory();assert.equal(($('bagGrid').innerHTML.match(/item-cell empty/g)||[]).length,36);closeInventory();
+for(let i=0;i<36;i++)assert(bagPut(valuableItem(1)));assert(!bagPut(valuableItem(1)));assert.equal(backpack.length,36);
+const frozenCoins=profile.coins;buyTraining('search');assert.equal(profile.search,0);assert.equal(profile.coins,frozenCoins);
+phase='briefing';for(const key of ['search','radar','trade'])for(let rank=1;rank<=3;rank++){buyTraining(key);assert.equal(profile[key],rank)}
+assert(Math.abs(searchDuration({item:{lv:5}})-7.6)<1e-9);assert(Math.abs(searchDuration({item:{lv:1}})-.494)<1e-9);assert(searchDuration({item:{lv:5}})>10*searchDuration({item:{lv:1}}));
+assert.equal(radarRange(),36);assert(radarCanSee({x:36,z:0,alive:true}));assert(!radarCanSee({x:37,z:0,alive:true}));assert(!radarCanSee({x:3,z:0,alive:false}));assert(!radarCanSee(player));
+const reloaded=normalizeProfile(JSON.parse(localStorage.getItem('fdd-extraction-v1')));assert.equal(reloaded.bag,5);assert.equal(reloaded.search,3);assert.equal(reloaded.radar,3);assert.equal(reloaded.trade,3);
+// Successful extraction adds a floored bonus exactly once; failure adds nothing.
+const payoutBase=carriedValue();assert.equal(extractionPayout(),payoutBase+Math.floor(payoutBase*.15));const bankBefore=profile.coins;phase='play';finish(true);assert.equal(profile.coins,bankBefore+payoutBase+Math.floor(payoutBase*.15));const paid=profile.coins;finish(true);assert.equal(profile.coins,paid);phase='play';finish(false);assert.equal(profile.coins,paid);
+profile=retainedProfile;saveProfile();
+console.log('PASS: save migration, per-upgrade caps/prices, bag expansion and rendered slots, full-bag protection, in-run purchase rejection, search/radar effects, persistence and one-time sale bonus');
 // All-vs-all AI: same-kind NPCs target each other, not a distant player.
 clearRun();player=createActor(0,50,0,'player',0);phase='play';elapsed=50;xp=0;level=1;player.maxHp=3;
 const npcA=createActor(1,0,0,'A',0),npcB=createActor(1,3.67,0,'B',0);
