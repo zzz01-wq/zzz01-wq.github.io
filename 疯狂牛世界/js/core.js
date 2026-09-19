@@ -9,9 +9,18 @@ const COWS=[
  {name:'星夜蓝牛',tag:'稀有',color:'#7b929c',scale:1.05,level:4,desc:'白天发呆，夜里收藏星星。',yield:'每轮 +5 金币'},
  {name:'梦境巨型牛',tag:'传说',color:'#d1b370',scale:1.65,level:5,desc:'牛很大，脾气很小。整个海都听见它来了。',yield:'每轮 1 青草 → 10 牛奶'}
 ];
+const JOBS=[
+ {id:'salvager',name:'打捞员',icon:'net',color:'#7c9baf',desc:'每轮自动打捞最多 3 份物资（含救牛）；人数提升数量。'},
+ {id:'farmer',name:'种植员',icon:'grass',color:'#9bad69',desc:'每位成员每轮生产 2 青草。'},
+ {id:'feeder',name:'饲料员',icon:'feed',color:'#c3aa71',desc:'每位成员每轮生产 2 饲料。'},
+ {id:'milker',name:'挤奶员',icon:'milk',color:'#d4e1d7',desc:'每位成员每轮消耗 1 青草产奶，牛种和品阶影响奶量。'},
+ {id:'merchant',name:'店员',icon:'tea',color:'#a98a9b',desc:'每位成员每轮经营收入 5 金币。'},
+ {id:'builder',name:'建造员',icon:'build',color:'#d2ad58',desc:'每位成员每轮备料 1 木材；建造木材费用降低，最高 30%。'}
+];
+const DEFAULT_JOBS=['farmer','milker','milker','feeder','merchant','milker'];
 const BUILDINGS=[
  {id:'shed',name:'青草棚',icon:'grass',desc:'每轮生产 4 青草 / 级',wood:12,coin:8,unlock:1},
- {id:'barn',name:'暖暖牛棚',icon:'barn',desc:'每级 +4 甲板位（最多 60）· 牛群基础产出 +5%',wood:20,coin:15,unlock:1},
+ {id:'barn',name:'暖暖牛棚',icon:'barn',desc:'每级牛群基础产出 +5%',wood:20,coin:15,unlock:1},
  {id:'milk',name:'挤奶机',icon:'milk',desc:'每轮 1 饲料 → 5 牛奶 / 级',wood:28,coin:25,unlock:2},
  {id:'tea',name:'海风奶茶摊',icon:'tea',desc:'每轮 2 牛奶 → 8 金币 / 级',wood:35,coin:30,unlock:2}
 ];
@@ -31,16 +40,34 @@ const SHIPS=[{tier:1,name:'漂流木排',desc:'木板与绳索，托起第一块
 const SEAS=[{name:'青草微风海',colors:['#a5cbc4','#83babc','#63a2ad'],bonus:'grass',desc:'青草随风漂来，青草打捞翻倍。'},{name:'落日沉船湾',colors:['#dbccb0','#b9bba9','#819eaa'],bonus:'wood',desc:'古老船骸的馈赠，木材打捞翻倍。'},{name:'星乳梦境海',colors:['#b9bfce','#94afc0','#768eae'],bonus:'milk',desc:'月色落进奶桶，牛奶打捞翻倍。'},{name:'金潮宝藏洋',colors:['#bad1b4','#88bcb1','#619ea1'],bonus:'coin',desc:'商船曾驶过这里，宝箱金币翻倍。'}];
 const RESOURCE_NAMES={wood:'木材',grass:'青草',coin:'金币',milk:'牛奶',feed:'饲料'};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-function fresh(){let tiles=[];for(let x=-1;x<=1;x++)for(let z=-1;z<=1;z++)tiles.push({x,z,grass:x===0||z===0});return {version:2,sea:1,raftTier:1,reserve:[0,0,0,0,0,0],breedRanks:[1,1,1,1,1,1],voyage:{collected:0,rescued:0,builds:0},time:0,resources:{coin:20,wood:8,grass:12,milk:0,feed:3},tiles,cows:[{type:0,x:0,z:0,seed:1}],buildings:{},discovered:[0],player:{x:0,z:.5},stats:{collected:0,rescued:0,builds:0},quest:0,contracts:0,contractBase:0,production:0,spawnClock:0,cowClock:0,eventClock:0,cooldown:0,muted:false,paused:false};}
+function fresh(){let tiles=[];for(let x=-1;x<=1;x++)for(let z=-1;z<=1;z++)tiles.push({x,z,grass:x===0||z===0});return {version:2,jobs:[...DEFAULT_JOBS],sea:1,raftTier:1,reserve:[0,0,0,0,0,0],breedRanks:[1,1,1,1,1,1],voyage:{collected:0,rescued:0,builds:0},time:0,resources:{coin:20,wood:8,grass:12,milk:0,feed:3},tiles,cows:[{type:0,x:0,z:0,seed:1}],buildings:{},discovered:[0],player:{x:0,z:.5},stats:{collected:0,rescued:0,builds:0},quest:0,contracts:0,contractBase:0,production:0,spawnClock:0,cowClock:0,eventClock:0,cooldown:0,muted:false,paused:false};}
 class World {
  constructor(saved){this.s=fresh();this.drops=[];this.effects=[];this.notices=[];this.rng=Math.random;this.serial=0;this.spawnCount=0;
- if(saved&&(saved.version===1||saved.version===2)){try{const data=JSON.parse(JSON.stringify(saved));if(data.version===1){Object.assign(data,{version:2,sea:1,raftTier:1,reserve:[0,0,0,0,0,0],breedRanks:[1,1,1,1,1,1]});data.stats.builds=0;data.voyage={collected:data.stats.collected,rescued:data.stats.rescued,builds:0};}this.validate(data);this.s=data;}catch{this.notices.push({text:'存档无法读取，已开始新的漂流。'});}}
+ if(saved&&(saved.version===1||saved.version===2)){try{const data=JSON.parse(JSON.stringify(saved));if(data.version===1){Object.assign(data,{version:2,sea:1,raftTier:1,reserve:[0,0,0,0,0,0],breedRanks:[1,1,1,1,1,1]});data.stats.builds=0;data.voyage={collected:data.stats.collected,rescued:data.stats.rescued,builds:0};}if(data.jobs===undefined)data.jobs=[...DEFAULT_JOBS];this.validate(data);this.s=data;}catch{this.notices.push({text:'存档无法读取，已开始新的漂流。'});}}
  for(let i=0;i<14;i++)this.spawnDrop(i%5, true);this.spawnCow(1,true);
  }
- validate(s){const finite=(n)=>typeof n==='number'&&Number.isFinite(n);if(!s.resources||!s.player||!s.stats||!s.buildings||!Array.isArray(s.tiles)||s.tiles.length<9||s.tiles.length>81||!Array.isArray(s.cows)||s.cows.length<1||s.cows.length>100||!Array.isArray(s.discovered))throw Error('shape');for(const k of Object.keys(RESOURCE_NAMES))if(!finite(s.resources[k])||s.resources[k]<0||s.resources[k]>1e12)throw Error('resources');for(const k of ['time','quest','contracts','contractBase','production','spawnClock','cowClock','eventClock','cooldown'])if(!finite(s[k])||s[k]<0)throw Error('clock');if(!Number.isInteger(s.quest)||s.quest>QUESTS.length)throw Error('quest');if(!finite(s.stats.collected)||!finite(s.stats.rescued))throw Error('stats');if(!finite(s.player.x)||!finite(s.player.z)||(s.player.heading!==undefined&&!finite(s.player.heading)))throw Error('player');for(const t of s.tiles)if(!Number.isInteger(t.x)||!Number.isInteger(t.z)||Math.abs(t.x)>4||Math.abs(t.z)>4)throw Error('tile');for(const t of s.tiles)if(t.cost!==undefined&&(!Number.isInteger(t.cost)||t.cost<0||t.cost>21))throw Error('tile cost');if(new Set(s.tiles.map(t=>t.x+','+t.z)).size!==s.tiles.length)throw Error('duplicate');for(const c of s.cows)if(!COWS[c.type]||!finite(c.x)||!finite(c.z)||!finite(c.seed)||(c.heading!==undefined&&!finite(c.heading)))throw Error('cow');if(s.discovered.some(t=>!COWS[t]))throw Error('book');for(const [id,b]of Object.entries(s.buildings))if(!BUILDINGS.some(v=>v.id===id)||!Number.isInteger(b.level)||b.level<1||b.level>5+2*(s.raftTier-1)||!finite(b.x)||!finite(b.z))throw Error('building');for(const key of ['sea','raftTier'])if(!Number.isSafeInteger(s[key])||s[key]<1)throw Error('voyage');for(const key of ['reserve','breedRanks'])if(!Array.isArray(s[key])||s[key].length!==6||s[key].some(n=>!Number.isSafeInteger(n)||n<(key==='reserve'?0:1)))throw Error('herd');for(const key of ['collected','rescued','builds'])if(!Number.isSafeInteger(s.voyage?.[key])||s.voyage[key]<0||!Number.isSafeInteger(s.stats[key])||s.stats[key]<s.voyage[key])throw Error('voyage stats');}
+ validate(s){if(!Array.isArray(s.jobs)||s.jobs.length!==6||s.jobs.some(id=>!JOBS.some(j=>j.id===id)))throw Error('jobs');const finite=(n)=>typeof n==='number'&&Number.isFinite(n);if(!s.resources||!s.player||!s.stats||!s.buildings||!Array.isArray(s.tiles)||s.tiles.length<9||s.tiles.length>81||!Array.isArray(s.cows)||s.cows.length<1||s.cows.length>100||!Array.isArray(s.discovered))throw Error('shape');for(const k of Object.keys(RESOURCE_NAMES))if(!finite(s.resources[k])||s.resources[k]<0||s.resources[k]>1e12)throw Error('resources');for(const k of ['time','quest','contracts','contractBase','production','spawnClock','cowClock','eventClock','cooldown'])if(!finite(s[k])||s[k]<0)throw Error('clock');if(!Number.isInteger(s.quest)||s.quest>QUESTS.length)throw Error('quest');if(!finite(s.stats.collected)||!finite(s.stats.rescued))throw Error('stats');if(!finite(s.player.x)||!finite(s.player.z)||(s.player.heading!==undefined&&!finite(s.player.heading)))throw Error('player');for(const t of s.tiles)if(!Number.isInteger(t.x)||!Number.isInteger(t.z)||Math.abs(t.x)>4||Math.abs(t.z)>4)throw Error('tile');for(const t of s.tiles)if(t.cost!==undefined&&(!Number.isInteger(t.cost)||t.cost<0||t.cost>21))throw Error('tile cost');if(new Set(s.tiles.map(t=>t.x+','+t.z)).size!==s.tiles.length)throw Error('duplicate');for(const c of s.cows)if(!COWS[c.type]||!finite(c.x)||!finite(c.z)||!finite(c.seed)||(c.heading!==undefined&&!finite(c.heading)))throw Error('cow');if(s.discovered.some(t=>!COWS[t]))throw Error('book');for(const [id,b]of Object.entries(s.buildings))if(!BUILDINGS.some(v=>v.id===id)||!Number.isInteger(b.level)||b.level<1||b.level>5+2*(s.raftTier-1)||!finite(b.x)||!finite(b.z))throw Error('building');for(const key of ['sea','raftTier'])if(!Number.isSafeInteger(s[key])||s[key]<1)throw Error('voyage');for(const key of ['reserve','breedRanks'])if(!Array.isArray(s[key])||s[key].length!==6||s[key].some(n=>!Number.isSafeInteger(n)||n<(key==='reserve'?0:1)))throw Error('herd');for(const key of ['collected','rescued','builds'])if(!Number.isSafeInteger(s.voyage?.[key])||s.voyage[key]<0||!Number.isSafeInteger(s.stats[key])||s.stats[key]<s.voyage[key])throw Error('voyage stats');}
  get level(){return Math.min(5,1+Math.floor((this.s.tiles.length-9)/6));}
  get capacity(){return Math.min(60,3+Math.floor((this.s.tiles.length-9)/3)+(this.s.buildings.barn?.level||0)*4);}
  get herdSize(){return this.s.cows.length+this.s.reserve.reduce((a,b)=>a+b,0);}
+ get workerCounts(){const n=[...this.s.reserve];for(let i=1;i<this.s.cows.length;i++)n[this.s.cows[i].type]++;return n;}
+ get workerTeams(){
+  const counts=this.workerCounts;
+  return JOBS.map((job,index)=>{const types=counts.map((n,type)=>({type,n})).filter(a=>a.n>0&&this.s.jobs[a.type]===job.id);const count=types.reduce((sum,t)=>sum+t.n,0),power=types.reduce((sum,t)=>sum+t.n*this.s.breedRanks[t.type],0);const type=types.sort((a,b)=>this.s.breedRanks[b.type]-this.s.breedRanks[a.type]||b.type-a.type)[0]?.type||0;return {...job,index,types,count,power,type};});
+ }
+ assignJob(type,id){if(!Number.isInteger(type)||type<0||type>=6||!JOBS.some(j=>j.id===id)||this.workerCounts[type]<=0)return false;this.s.jobs[type]=id;this.notice(`${COWS[type].name}小队已调任${JOBS.find(j=>j.id===id).name}。`,'build');return true;}
+ get buildDiscount(){const power=this.workerTeams.find(j=>j.id==='builder').power;return Math.min(.3,power*.03);}
+ woodCost(n){return Math.max(1,Math.ceil(n*(1-this.buildDiscount)));}
+ get visibleWorkers(){
+  if(this.workerState!==this.s){this.workerState=this.s;this.workerActors={};}
+  return this.workerTeams.filter(t=>t.count>0).map(t=>{
+   const anchors=[{x:1,z:1},{x:-1,z:1},{x:-1,z:-1},{x:1,z:-1},{x:1,z:0},{x:0,z:1}];
+   const facility={farmer:'shed',feeder:'barn',milker:'milk',merchant:'tea'}[t.id],base=this.s.buildings[facility]||anchors[t.index];
+   const station=this.nearest(base.x+.25,base.z+.3);
+   const actor=this.workerActors[t.id]||(this.workerActors[t.id]={...station,seed:51+t.index,heading:0});
+   Object.assign(actor,{type:t.type,job:t.id,count:t.count,station});return actor;
+  });
+ }
  get seaTheme(){return SEAS[(this.s.sea-1)%SEAS.length];}
  get shipStage(){return [...SHIPS].reverse().find(stage=>stage.tier<=this.s.raftTier);}
  get nextShipStage(){return SHIPS.find(stage=>stage.tier>this.s.raftTier);}
@@ -48,7 +75,7 @@ class World {
  get yieldBoost(){return 1+(this.s.raftTier-1)*.15;}
  get netRange(){return 4.6+Math.min(2,(this.s.raftTier-1)*.12);}
  get productionInterval(){return Math.max(5,10-(this.s.raftTier-1)*.2);}
- tierCost(){return {wood:60*this.s.raftTier,coin:45*this.s.raftTier};}
+ tierCost(){return {wood:this.woodCost(60*this.s.raftTier),coin:45*this.s.raftTier};}
  upgradeRaft(){if(!this.pay(this.tierCost()))return false;const from=this.s.raftTier;this.s.raftTier++;this.upgradeFX={from,to:this.s.raftTier,age:0};this.notice(`${this.shipStage.name} · ${this.s.raftTier} 阶！船体正在改造。`,'build');return true;}
  get voyageGoals(){const v=this.s.voyage;return [{name:'铺出 25 块木筏',value:this.s.tiles.length,goal:25},{name:`木筏升至 ${this.s.sea+1} 阶`,value:this.s.raftTier,goal:this.s.sea+1},{name:'本海域打捞物资',value:this.s.stats.collected-v.collected,goal:24+6*((this.s.sea-1)%4)},{name:'本海域救援牛伙伴',value:this.s.stats.rescued-v.rescued,goal:2},{name:'本海域建造或升级设施',value:this.s.stats.builds-v.builds,goal:1}];}
  get canSail(){return this.voyageGoals.every(g=>g.value>=g.goal);}
@@ -63,7 +90,7 @@ class World {
  canPay(r){return Object.entries(r).every(([k,v])=>this.s.resources[k]>=v);}
  pay(r){if(!this.canPay(r)){this.notice('物资还不够，再去海边打捞一些吧。');return false;}for(const[k,v]of Object.entries(r))this.s.resources[k]-=v;return true;}
  costText(r){return Object.entries(r).map(([k,v])=>`${v} ${RESOURCE_NAMES[k]}`).join(' · ');}
- expandCost(){return {wood:5+Math.floor((this.s.tiles.length-9)/9)*2};}
+ expandCost(){return {wood:this.woodCost(5+Math.floor((this.s.tiles.length-9)/9)*2)};}
  tileAt(x,z){return this.s.tiles.find(t=>t.x===x&&t.z===z);}
  expansionSites(){const out=[];for(let x=-4;x<=4;x++)for(let z=-4;z<=4;z++)if(!this.tileAt(x,z)&&this.s.tiles.some(t=>Math.abs(t.x-x)+Math.abs(t.z-z)===1))out.push({x,z});return out;}
  expand(x,z){
@@ -133,7 +160,7 @@ class World {
   return smooth;
  }
 
- buildingCost(id){const b=BUILDINGS.find(b=>b.id===id);const n=(this.s.buildings[id]?.level||0)+1;return {wood:b.wood*n,coin:b.coin*n};}
+ buildingCost(id){const b=BUILDINGS.find(b=>b.id===id);const n=(this.s.buildings[id]?.level||0)+1;return {wood:this.woodCost(b.wood*n),coin:b.coin*n};}
  build(id,position){const d=BUILDINGS.find(b=>b.id===id);if(!d)return false;if(this.level<d.unlock){this.notice(`扩建到 Lv.${d.unlock} 后解锁。`);return false;}let old=this.s.buildings[id];if(old?.level>=this.buildingCap){this.notice('先升阶木筏，解锁更高设施等级。');return false;}let free=this.s.tiles.filter(t=>!Object.values(this.s.buildings).some(b=>b.x===t.x&&b.z===t.z)&&!(t.x===0&&t.z===0));free.sort((a,b)=>(a.x+a.z)-(b.x+b.z));if(!old&&!free.length){this.notice('先扩建一块木筏，给设施留个位置。');return false;}if(!old&&position){const tile=free.find(t=>t.x===position.x&&t.z===position.z);if(!tile){this.notice('请选择空闲甲板，中央龙骨位置需要留出。');return false;}free=[tile];}if(!this.pay(this.buildingCost(id)))return false;if(old)old.level++;else this.s.buildings[id]={level:1,x:free[0].x,z:free[0].z};this.s.stats.builds++;this.notice(`${d.name} ${old?'升级':'建成'}了！`,'build');return true;}
  // Shared edges must meet exactly: only coastlines need a safety inset.
  // Cache geometry, rebuilding immediately after expansion or replacing a save.
@@ -174,7 +201,7 @@ class World {
   if(drop.type==='cow'){
    const type=drop.cowType,rank=drop.rank||1;
    this.s.breedRanks[type]=Math.max(this.s.breedRanks[type],rank);
-   if(this.s.cows.length>=this.capacity){this.s.reserve[type]++;this.notice(`${COWS[type].name}加入随行牛队！同样参与生产，不占甲板位置。`,'rescue');}
+   if(this.s.cows.length>=this.capacity){this.s.reserve[type]++;this.notice(`${COWS[type].name}加入工作小队！人数与产出增长，甲板只显示工种代表。`,'rescue');}
    else {const pos=this.nearest(drop.x,drop.z);this.s.cows.push({type,...pos,seed:this.rng()*100});this.notice(`${COWS[type].name}加入了你的牛群！`,'rescue');}
    if(!this.s.discovered.includes(type))this.s.discovered.push(type);this.s.stats.rescued++;
   }else{
@@ -188,14 +215,19 @@ class World {
  produce(){
   const s=this.s,r=s.resources,boost=this.yieldBoost;
   r.grass+=Math.ceil((Math.max(1,Math.floor(s.tiles.filter(t=>t.grass).length/3))+(s.buildings.shed?.level||0)*4)*boost);
-  const counts=[...s.reserve];for(const c of s.cows)counts[c.type]++;
+  // The playable calf stays captain; every other cow works in exactly one team.
+  const counts=this.workerCounts,barn=1+(s.buildings.barn?.level||0)*.05;
+  r.grass+=Math.ceil(2*boost*barn);
   for(let type=0;type<counts.length;type++){
-   const n=counts[type],power=s.breedRanks[type]*boost*(1+(s.buildings.barn?.level||0)*.05);
-   if(type===0)r.grass+=Math.ceil(2*n*power);
-   else if(type===3)r.feed+=Math.ceil(2*n*power);
-   else if(type===4)r.coin+=Math.ceil(5*n*power);
-   else {const fed=Math.min(n,Math.floor(r.grass));r.grass-=fed;r.milk+=Math.ceil(fed*(type===5?10:type===2?3:2)*power);}
+   const n=counts[type],power=s.breedRanks[type]*boost*barn,job=s.jobs[type];if(!n)continue;
+   if(job==='farmer')r.grass+=Math.ceil(2*n*power);
+   if(job==='feeder')r.feed+=Math.ceil(2*n*power);
+   if(job==='merchant')r.coin+=Math.ceil(5*n*power);
+   if(job==='builder')r.wood+=Math.ceil(n*power);
+   if(job==='milker'){const fed=Math.min(n,Math.floor(r.grass));r.grass-=fed;r.milk+=Math.ceil(fed*(type===5?10:type===2?3:2)*power);}
   }
+  const salvage=this.workerTeams.find(t=>t.id==='salvager');
+  if(salvage.count){let caught=0;for(const drop of [...this.drops].sort((a,b)=>a.age-b.age)){if(caught>=Math.min(3,salvage.count))break;if(this.collect(drop))caught++;}}
   if(s.buildings.milk&&r.feed>=1){r.feed--;r.milk+=Math.ceil(5*s.buildings.milk.level*boost);}
   if(s.buildings.tea&&r.milk>=2){r.milk-=2;r.coin+=Math.ceil(8*s.buildings.tea.level*boost);}
   for(const k of Object.keys(r))r[k]=Math.min(1e12,r[k]);
@@ -204,8 +236,13 @@ class World {
  update(dt){dt=Math.min(.1,Math.max(0,dt));const s=this.s;if(s.paused)return;s.time+=dt;if(this.upgradeFX){this.upgradeFX.age+=dt;if(this.upgradeFX.age>=3)this.upgradeFX=null;}s.cooldown=Math.max(0,s.cooldown-dt);s.spawnClock+=dt;s.cowClock+=dt;s.production+=dt;s.eventClock+=dt;this.bonus=Math.max(0,(this.bonus||0)-dt);if(s.spawnClock>2.3){s.spawnClock=0;this.spawnDrop();}if(s.cowClock>23){s.cowClock=0;this.spawnCow();}if(s.production>=this.productionInterval){s.production-=this.productionInterval;this.produce();}if(s.eventClock>=65){s.eventClock=0;const event=Math.floor(this.rng()*3);if(event===0){this.bonus=20;this.notice('丰收暖流 · 20 秒内打捞资源翻倍！','weather');}else if(event===1){this.add({grass:12*s.sea,feed:4*s.sea});this.notice(`云雀送来礼物：${12*s.sea} 青草、${4*s.sea} 饲料。`,'weather');}else{for(let i=0;i<5;i++)this.spawnDrop(4);this.notice('梦境宝箱潮！海上漂来了许多宝箱。','weather');}}
  for(const d of [...this.drops]){d.age+=dt;const angle=Math.atan2(d.z,d.x)+dt*.032;let radius=Math.hypot(d.x,d.z);const target=this.radius+.9+Math.sin(d.seed)*.3;radius+=(target-radius)*dt*.07;d.x=Math.cos(angle)*radius;d.z=Math.sin(angle)*radius;if(Math.hypot(d.x-s.player.x,d.z-s.player.z)<1.85)this.collect(d);if(d.age>d.life)this.drops=this.drops.filter(o=>o!==d);}
  for(const e of this.effects)e.life-=dt;this.effects=this.effects.filter(e=>e.life>0);
- for(let i=1;i<s.cows.length;i++){const c=s.cows[i],oldX=c.x,oldZ=c.z;const tx=Math.sin(s.time*.12+c.seed)*(this.radius-.6),tz=Math.cos(s.time*.13+c.seed*2)*(this.radius-.6);const n=this.nearest(c.x+(tx-c.x)*dt*.25,c.z+(tz-c.z)*dt*.25);c.x=n.x;c.z=n.z;this.yieldToPlayer(c,dt);this.faceMovement(c,c.x-oldX,c.z-oldZ,dt);}
+ for(const c of this.visibleWorkers){const oldX=c.x,oldZ=c.z;
+  const nearestDrop=c.job==='salvager'?this.drops.find(d=>d.type!=='cow'):null;
+  const target=nearestDrop?this.nearest(nearestDrop.x,nearestDrop.z):c.station;
+  const dx=target.x-c.x,dz=target.z-c.z;const n=this.nearest(c.x+dx*dt*.7,c.z+dz*dt*.7);c.x=n.x;c.z=n.z;this.yieldToPlayer(c,dt);this.faceMovement(c,c.x-oldX,c.z-oldZ,dt);
+ }
+
  }
 }
-root.CowWorld={World,COWS,BUILDINGS,QUESTS,SEAS,SHIPS,RESOURCE_NAMES,fresh};if(typeof module!=='undefined')module.exports=root.CowWorld;
+root.CowWorld={World,COWS,JOBS,BUILDINGS,QUESTS,SEAS,SHIPS,RESOURCE_NAMES,fresh};if(typeof module!=='undefined')module.exports=root.CowWorld;
 })(typeof window!=='undefined'?window:globalThis);

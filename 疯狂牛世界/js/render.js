@@ -15,7 +15,7 @@ class Renderer{
  flush(){const ctx=this.ctx;this.faces.sort((a,b)=>a.depth-b.depth);for(const f of this.faces){ctx.beginPath();for(let i=0;i<f.points.length;i++){const p=this.project(...f.points[i]);if(!i)ctx.moveTo(...p);else ctx.lineTo(...p);}ctx.closePath();ctx.fillStyle=f.color;ctx.fill();}this.faces=[];}
  ellipse(x,y,z,rx,rz,color){const p=this.project(x,y,z),c=this.ctx;c.fillStyle=color;c.beginPath();c.ellipse(p[0],p[1],rx*this.scale,rz*this.scale,0,0,TAU);c.fill();}
  line3(points,color,width=1){const c=this.ctx;c.beginPath();points.forEach((p,i)=>{const q=this.project(...p);i?c.lineTo(...q):c.moveTo(...q);});c.strokeStyle=color;c.lineWidth=width;c.stroke();}
- cow(x,y,z,type=0,phase=0,player=false,heading=0){const begin=this.faces.length;this.rotatingCow=true;const def=CowWorld.COWS[type],s=def.scale*(player?1.2:1),col=def.color;const bob=Math.sin(phase*2)*.018;const E=(a,b,c,rx,ry,rz,color)=>this.ellipsoid(x+a*s,y+(b+bob)*s,z+c*s,rx*s,ry*s,rz*s,color);const B=(a,b,c,w,h,d,color)=>this.box(x+a*s,y+b*s,z+c*s,w*s,h*s,d*s,color);
+ cow(x,y,z,type=0,phase=0,player=false,heading=0,job=null){const begin=this.faces.length;this.rotatingCow=true;const def=CowWorld.COWS[type],s=def.scale*(player?1.2:1),col=def.color;const bob=Math.sin(phase*2)*.018;const E=(a,b,c,rx,ry,rz,color)=>this.ellipsoid(x+a*s,y+(b+bob)*s,z+c*s,rx*s,ry*s,rz*s,color);const B=(a,b,c,w,h,d,color)=>this.box(x+a*s,y+b*s,z+c*s,w*s,h*s,d*s,color);
  // Slightly awkward upright posture, narrow legs, long snout and heavy eyelids.
  for(const side of [-1,1]){const step=Math.sin(phase+side)*.035;B(side*.14,.04,step,.12,.35,.15,col);B(side*.14,.015,.055+step,.15,.09,.22,'#655b4c');E(side*.30,.63,.015,.085,.28,.095,col);E(side*.32,.41,.07,.095,.09,.11,'#b29a79');}
  E(0,.59,0,.29,.39,.24,col);E(0,.84,-.02,.19,.22,.19,col);E(0,1.07,.055,.255,.285,.245,col);E(0,.98,.26,.215,.13,.19,'#cfb794');E(0,.935,.30,.185,.038,.125,'#b89c80');
@@ -24,6 +24,11 @@ class Renderer{
  if(type===3){this.cone(x,y+1.41*s,z,.29*s,.15*s,'#a46656');E(0,1.4,0,.30,.08,.23,'#b6785f');}
  if(type===4){B(0,.72,.245,.09,.13,.02,'#e8d694');}
  if(type===5){for(let i=-1;i<=1;i++)this.cone(x+i*.11*s,y+1.42*s,z+.035*s,.05*s,.16*s,'#e7cc71');}
+ if(job){const role=CowWorld.JOBS.find(j=>j.id===job);if(role){
+  B(0,.68,.23,.33,.30,.04,role.color);
+  if(job==='builder'||job==='farmer'){E(0,1.34,.04,.32,.07,.27,role.color);B(0,1.35,.04,.26,.09,.22,role.color);}
+  if(job==='salvager'){B(.40,.26,.12,.035,.58,.035,'#a18c61');E(.40,.85,.12,.16,.12,.025,role.color);}
+ }}
  this.rotatingCow=false;
  if(heading){const cos=Math.cos(heading),sin=Math.sin(heading);for(let i=begin;i<this.faces.length;i++){
   const face=this.faces[i];face.points=face.points.map(([px,py,pz])=>[x+(px-x)*cos+(pz-z)*sin,py,z-(px-x)*sin+(pz-z)*cos]);
@@ -133,7 +138,7 @@ class Renderer{
  }
  pickDeckCow(sx,sy){
   // A click on a tall cow should target its feet, not a distant tile behind its head.
-  const cows=this.world.s.cows.slice(1).map(c=>({...c,player:false}));
+  const cows=this.world.visibleWorkers.map(c=>({...c,player:false}));
   cows.push({...this.world.s.player,type:0,player:true});
   cows.sort((a,b)=>(b.x+b.z)-(a.x+a.z));
   for(const cow of cows){const size=CowWorld.COWS[cow.type].scale*(cow.player?1.2:1),b=this.objectBounds(cow.x,cow.z,1.55*size,.32*size);
@@ -158,14 +163,15 @@ class Renderer{
  const flag=s.tiles[0];this.box(flag.x-.3,.02,flag.z-.30,.055,1.65,.055,'#8c7858');this.poly([[flag.x-.27,1.66,flag.z-.3],[flag.x+.32,1.60+Math.sin(this.time*2)*.03,flag.z-.3],[flag.x+.32,1.24,flag.z-.3],[flag.x-.27,1.3,flag.z-.3]],'#eee2b5');this.flush();const fp=this.project(flag.x+.015,1.39,flag.z-.3);c.save();c.fillStyle='#647b54';c.font=`bold ${Math.max(10,this.scale*.20)}px serif`;c.textAlign='center';c.fillText('牛',fp[0],fp[1]);c.restore();
  const anchor=this.shipAnchor();const entities=[{depth:anchor.x+anchor.z,fade:this.blocksPlayer(anchor.x,anchor.z,2.5,.9),fn:()=>this.shipStructures()}];
  for(const [id,b]of Object.entries(s.buildings))entities.push({depth:b.x+b.z,fade:this.blocksPlayer(b.x,b.z,1,.5),fn:()=>this.building(id,b)});
- for(let i=1;i<s.cows.length;i++){const cow=s.cows[i],size=CowWorld.COWS[cow.type].scale;entities.push({depth:cow.x+cow.z+.1,fade:this.blocksPlayer(cow.x,cow.z,size*1.6,size*.45),fn:()=>this.cow(cow.x,.08,cow.z,cow.type,this.time*.7+cow.seed,false,cow.heading||0)});}
+ for(const cow of w.visibleWorkers){const size=CowWorld.COWS[cow.type].scale;entities.push({depth:cow.x+cow.z+.1,fade:this.blocksPlayer(cow.x,cow.z,size*1.6,size*.45),fn:()=>this.cow(cow.x,.08,cow.z,cow.type,this.time*.7+cow.seed,false,cow.heading||0,cow.job)});}
  const p=s.player;this.ellipse(p.x,.08,p.z,.30,.12,'#405a4438');
  for(const d of w.drops)entities.push({depth:d.x+d.z,fade:d.type==='cow'&&this.blocksPlayer(d.x,d.z,CowWorld.COWS[d.cowType].scale*1.6,.65),fn:()=>this.drop(d)});
  entities.sort((a,b)=>a.depth-b.depth);for(const e of entities){c.globalAlpha=e.fade?.32:1;e.fn();this.flush();}c.globalAlpha=1;
  this.shipRails();this.flush();
  if(this.destination&&!this.editMode){const q=this.project(this.destination.x,.10,this.destination.z);c.strokeStyle='#fff2b0';c.lineWidth=2;c.beginPath();c.ellipse(q[0],q[1],9,5,0,0,TAU);c.stroke();}
- for(const d of w.drops){if(d.type==='cow'){const q=this.project(d.x,CowWorld.COWS[d.cowType].scale*1.55,d.z);this.label(q[0],q[1],s.cows.length>=w.capacity?'加入随行牛队':`${d.rank||1} 阶 · 救救牛！`,d.cowType>=4?'#8c7445':'#527568');}}
+ for(const d of w.drops){if(d.type==='cow'){const q=this.project(d.x,CowWorld.COWS[d.cowType].scale*1.55,d.z);this.label(q[0],q[1],s.cows.length>=w.capacity?'加入工作小队':`${d.rank||1} 阶 · 救救牛！`,d.cowType>=4?'#8c7445':'#527568');}}
  for(const e of w.effects){if(e.ring){const q=this.project(e.x,0,e.z);c.strokeStyle=`rgba(255,244,195,${e.life})`;c.lineWidth=2;c.beginPath();c.ellipse(q[0],q[1],(1-e.life)*this.scale*w.netRange,(1-e.life)*this.scale*w.netRange*.5,0,0,TAU);c.stroke();}else{const q=this.project(e.x,.6+(2-e.life)*.35,e.z);c.globalAlpha=Math.min(1,e.life);this.label(q[0],q[1],e.text,'#416d55');c.globalAlpha=1;}}
+ for(const worker of w.visibleWorkers){const q=this.project(worker.x,CowWorld.COWS[worker.type].scale*1.6,worker.z);this.label(q[0],q[1],CowWorld.JOBS.find(j=>j.id===worker.job).name+' ×'+worker.count,'#536e58');}
  this.birds();this.drawPlayer();this.drawBuildGrid();
  if(w.upgradeFX){const fx=w.upgradeFX;const progress=Math.min(1,fx.age/3);this.label(this.w/2,this.h*.29,`船体改造 · ${Math.round(progress*100)}%`,'#5a795b');c.strokeStyle=`rgba(250,222,148,${1-progress})`;c.lineWidth=3;const p=this.project(0,0,0);c.beginPath();c.ellipse(p[0],p[1],this.scale*(w.radius+progress),this.scale*(w.radius+progress)*.45,0,0,TAU);c.stroke();}
  }

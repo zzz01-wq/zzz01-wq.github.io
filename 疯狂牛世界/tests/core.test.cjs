@@ -173,6 +173,39 @@ test('player and wandering cows turn smoothly and keep facing after stopping',()
  const w=new World();w.s.player={x:0,z:0};w.move(1,0,1/60);assert.ok(w.s.player.heading>0&&w.s.player.heading<Math.PI/2);
  for(let i=0;i<15;i++)w.move(1,0,1/60);assert.ok(Math.abs(w.s.player.heading-Math.PI/2)<1e-8);
  const before=w.s.player.heading;w.move(0,0,.1);assert.equal(w.s.player.heading,before);
- w.s.cows.push({type:1,x:0,z:-1,seed:1});w.update(.1);assert.ok(Number.isFinite(w.s.cows[1].heading));
+ w.s.cows.push({type:1,x:0,z:-1,seed:1});w.update(.1);assert.ok(Number.isFinite(w.visibleWorkers[0].heading));
  const restored=new World(JSON.parse(JSON.stringify(w.s)));assert.equal(restored.s.player.heading,w.s.player.heading);
+});
+
+test('jobs aggregate a million workers into at most six representatives and survive old-save migration',()=>{
+ const w=new World();w.s.reserve=[1,2,3,4,5,1000000];
+ const ids=['salvager','farmer','feeder','milker','merchant','builder'];
+ ids.forEach((id,type)=>assert.ok(w.assignJob(type,id)));
+ assert.equal(w.visibleWorkers.length,6);assert.equal(new Set(w.visibleWorkers.map(c=>c.job)).size,6);
+ assert.equal(w.workerTeams.reduce((n,t)=>n+t.count,0),w.herdSize-1);
+ assert.ok(w.assignJob(5,'milker'));assert.equal(w.visibleWorkers.length,5);
+ assert.equal(w.workerTeams.find(t=>t.id==='milker').count,1000004);
+ const saved=JSON.parse(JSON.stringify(w.s)),restored=new World(saved);
+ assert.deepEqual(restored.s.jobs,w.s.jobs);assert.equal(restored.herdSize,w.herdSize);
+ delete saved.jobs;const migrated=new World(saved);assert.equal(migrated.herdSize,w.herdSize);assert.equal(migrated.s.resources.wood,w.s.resources.wood);assert.equal(migrated.s.jobs[5],'milker');
+ const freshWorld=new World();assert.equal(freshWorld.assignJob(0,'builder'),false);assert.equal(w.assignJob(2,'invalid'),false);
+});
+test('changing profession replaces output instead of double-producing and discounts actual construction',()=>{
+ const w=new World();w.drops=[];w.s.reserve[1]=10;
+ const before={...w.s.resources};w.assignJob(1,'builder');w.produce();
+ assert.equal(w.s.resources.wood-before.wood,10);assert.equal(w.s.resources.milk,before.milk);
+ assert.equal(w.buildDiscount,.3);assert.equal(w.tierCost().wood,42);
+ w.s.resources.wood=1000;const cost=w.expandCost().wood;assert.ok(w.expand(2,0));assert.equal(w.s.resources.wood,1000-cost);assert.equal(w.tileAt(2,0).cost,cost);
+ for(const [job,key,amount]of [['farmer','grass',23],['feeder','feed',20],['merchant','coin',50],['milker','milk',20]]){
+  w.assignJob(1,job);w.s.resources.grass=100;const old={...w.s.resources};w.produce();assert.equal(w.s.resources[key]-old[key],amount);assert.equal(w.s.resources.wood,old.wood);
+ }
+ assert.equal(w.buildDiscount,0);
+});
+test('salvagers collect real drifting resources and rescue cows once, capped at three each cycle',()=>{
+ const w=new World();w.drops=[];w.s.reserve[0]=10;w.assignJob(0,'salvager');
+ w.spawnDrop(0);w.spawnCow(1,true);w.spawnDrop(4);w.spawnDrop(0);
+ const drops=[...w.drops],before=w.herdSize;w.produce();
+ assert.equal(w.s.stats.collected,2);assert.equal(w.s.stats.rescued,1);assert.equal(w.herdSize,before+1);assert.equal(w.drops.length,1);
+ assert.equal(w.collect(drops[0]),false);w.produce();assert.equal(w.s.stats.collected,3);assert.equal(w.drops.length,0);
+ w.produce();assert.equal(w.s.stats.collected,3);
 });

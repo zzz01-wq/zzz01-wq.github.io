@@ -33,6 +33,7 @@ test('custom shaped ship, upgrade effect and editor grid render at phone and des
 
 test('clicking a giant body resolves to its feet and player remains visible above a crowd',()=>{
  const w=new CowWorld.World();w.drops=[];w.s.player={x:0,z:0};w.s.cows.push({type:5,x:.4,z:.4,seed:1});
+ Object.assign(w.visibleWorkers[0],{x:.4,z:.4});
  const c=canvas(390,844),r=new sandbox.window.CowRenderer(c,w),draws=[];const cow=r.cow.bind(r);
  r.cow=(...args)=>{draws.push({player:args[5]===true,alpha:c.getContext().globalAlpha});return cow(...args);};r.draw();
  const hit=r.project(.4,1.8,.4),point=r.pickDeckCow(...hit);assert.ok(point);assert.equal(point.x,.4);assert.equal(point.z,.4);
@@ -47,4 +48,13 @@ test('cow geometry rotates about its feet for all headings, without transforming
  r.cow(1,0,2,0,0,true,0);const original=r.faces.slice(offset).map(f=>f.points.map(p=>[...p]));
  r.faces=r.faces.slice(0,offset);r.cow(1,0,2,0,0,true,Math.PI/2);assert.equal(JSON.stringify(r.faces.slice(0,offset)),stationary);
  r.faces.slice(offset).forEach((f,i)=>f.points.forEach(([x,y,z],j)=>{const [a,b,c]=original[i][j];assert.ok(Math.abs(x-(1+c-2))<1e-9);assert.equal(y,b);assert.ok(Math.abs(z-(2-(a-1)))<1e-9);}));
+});
+
+test('large herds draw one model per occupied job plus the captain',()=>{
+ const w=new CowWorld.World();w.drops=[];w.s.reserve=[100,100,100,100,100,1000000];
+ CowWorld.JOBS.forEach((j,i)=>w.assignJob(i,j.id));
+ const r=new sandbox.window.CowRenderer(canvas(320,568),w),draws=[];const cow=r.cow.bind(r);
+ r.cow=(...args)=>{draws.push(args);return cow(...args);};r.draw();
+ assert.equal(draws.length,7);assert.equal(draws.filter(a=>a[5]).length,1);assert.equal(new Set(draws.filter(a=>!a[5]).map(a=>a[7])).size,6);
+ w.assignJob(5,'milker');draws.length=0;r.draw();assert.equal(draws.length,6);
 });

@@ -47,3 +47,12 @@ test('a second click replaces the destination while surrounded by cows',()=>{
  app.clickCell(1,1);app.tick(20);app.clickCell(-1,1);app.tick(200);
  assert.ok(Math.hypot(app.world.s.player.x+1,app.world.s.player.z-1)<.1);
 });
+
+test('herd panel assigns a whole breed through the job selector and refreshes counts',()=>{
+ const app=boot();app.world.s.reserve[1]=20;app.panels[1].events.click();
+ assert.match(app.nodes.get('panelBody').innerHTML,/小队调岗/);assert.match(app.nodes.get('panelBody').innerHTML,/data-job-type="1"/);
+ app.nodes.set('job-1',new (app.nodes.get('panelBody').constructor)('job-1'));
+ app.nodes.get('panelBody').events.change({target:{dataset:{jobType:'1'},value:'builder'}});
+ assert.equal(app.world.s.jobs[1],'builder');assert.equal(app.world.visibleWorkers.length,1);assert.equal(app.world.visibleWorkers[0].count,20);
+ assert.match(app.nodes.get('panelBody').innerHTML,/节省 30%/);assert.match(app.nodes.get('panelBody').innerHTML,/value="builder" selected/);
+});
