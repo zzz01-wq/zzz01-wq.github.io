@@ -7,7 +7,7 @@
 <div class="vignette"></div>
 <header class="topbar"><div class="brand"><span class="brand-mark">牛</span><div><h1>疯狂牛世界</h1><p>A LITTLE COW, A BIG OCEAN</p></div></div><div id="resources" class="resources"></div><div class="top-actions"><button id="sound" class="icon-button" aria-label="切换静音"></button><button id="pause" class="icon-button" aria-label="暂停游戏"></button></div></header>
 <aside class="journey"><div class="eyebrow"><span class="live-dot"></span> 海上漂流日记 <span id="day">DAY 01</span></div><h2 id="islandName">一小块海上希望</h2><div class="island-stats"><span id="herdCount">1 头牛</span><i></i><span id="tileCount">9 块木筏</span><span id="level">Lv. 1</span></div><button id="quest" class="quest"><span class="quest-icon">↗</span><span><small>下一步 · 小小的开始</small><strong id="questTitle">打捞 5 份漂流物</strong><span class="progress"><i id="questProgress"></i></span></span><b id="questCount">0/5</b></button><div id="weather" class="weather">☀ 微风 · 今天也适合做梦</div></aside>
-<div class="coordinates">漂流海域 <span>04° N / 17° E</span><i></i><b>风从梦里来</b></div>
+<div class="coordinates">漂流海域 <span>04° N / 17° E</span><i></i><b>风从梦里来</b><button id="voyage" class="voyage-link">第 1 海域 · 远航 →</button></div>
 <div id="toasts" class="toasts" aria-live="polite"></div>
 <div id="event" class="event" aria-live="assertive"><span>有个大家伙，正漂向这里</span><strong>牛！来！</strong><p id="eventName">梦里的牛，真的来了。</p></div>
 <div class="world-caption" id="worldCaption"><span>一头小牛的海上白日梦</span><small>靠近漂流物，就会自动打捞</small></div>
@@ -15,6 +15,12 @@
 <button id="salvage" class="salvage"><span id="salvageIcon"></span><b>一网打捞</b><small id="cooldown">附近资源 · 自动收集</small></button>
 <nav class="dock" aria-label="游戏菜单"><button data-panel="build" class="primary"><span data-icon="build"></span><strong>建设</strong><small>让家大一点</small></button><button data-panel="herd"><span data-icon="cow"></span><strong>牛群</strong><small id="dockHerd">1 位家人</small></button><button data-panel="book"><span data-icon="book"></span><strong>图鉴</strong><small id="dockBook">1 / 6 已发现</small></button><button data-panel="tasks"><span data-icon="flag"></span><strong>任务</strong><small id="dockTask">成长日记</small></button></nav>
 <div class="bottom-note">木筏不大，梦想很牛。<span id="saveState">本地自动存档</span></div>
+<section id="buildEditor" class="build-editor" hidden aria-label="自定义甲板搭建">
+<div class="editor-heading"><span>船形工坊</span><button id="finishBuild" class="buy">完成搭建</button></div>
+<div class="editor-tools"><button data-tool="expand">铺甲板</button><button data-tool="grass">种青草</button><button data-tool="remove">拆甲板</button></div>
+<p id="buildHint" aria-live="polite">点击海面上的 +，选择扩建位置。</p>
+<div class="editor-confirm"><span id="buildSelection">尚未选择格子</span><button id="confirmBuild" class="buy gold" disabled>确认搭建</button></div>
+</section>
 <div id="modal" class="modal" hidden><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="panelTitle"><div class="sheet-handle"></div><header><div><span class="eyebrow" id="panelEyebrow">漂流生活</span><h2 id="panelTitle">建设你的海上家园</h2></div><button id="close" class="icon-button" aria-label="关闭面板">×</button></header><div id="panelBody" class="panel-body"></div></section></div>
 </main>
 <script src="js/core.js"></script><script src="js/render.js"></script><script src="js/game.js"></script>
