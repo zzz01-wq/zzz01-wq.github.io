@@ -5,7 +5,10 @@
   "description": "肥嘟嘟大冒险 · 手机局域网预览",
   "scripts": {
     "dev": "node server.mjs",
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test": "node tests/extraction.cjs"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }
