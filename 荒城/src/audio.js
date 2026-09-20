@@ -7,6 +7,7 @@ export class Soundscape {
  melee(){this.noise(.17,.8,400);}
  bark(distance=1){this.tone(150,.16,.7/Math.max(1,distance/4),'sawtooth',78);setTimeout(()=>this.tone(180,.12,.4/Math.max(1,distance/4),'triangle',90),180);}
  foot(){this.noise(.08,.18,250);}
+ impact(heavy=false){this.noise(heavy?.22:.12,heavy?1.4:.9,heavy?1000:1600);this.noise(.045,.65,2900);this.tone(heavy?125:155,.17,heavy?.85:.45,'triangle',38);}
  hit(){this.noise(.16,.8,450);this.tone(70,.18,.4,'sine',30);}
  update(weather,paused){if(this.wind)this.wind.gain.setTargetAtTime(paused?.035:weather==='暴雨'?.65:weather==='小雨'?.35:.12,this.ctx.currentTime,.6);}
 }

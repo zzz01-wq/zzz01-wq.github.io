@@ -6,17 +6,21 @@
 
 | 素材 | 作者和原始页面 | 许可 | 本地用途 |
 | --- | --- | --- | --- |
-| Zombie Apocalypse Kit | [Quaternius](https://quaternius.com/packs/zombieapocalypsekit.html) | CC0 1.0 | 德国牧羊犬、两种感染者、手枪／猎枪／步枪／缠线球棒、皮卡、卡车、油桶、木托盘、垃圾袋、路障、沙发、箱子 |
+| Zombie Apocalypse Kit | [Quaternius](https://quaternius.com/packs/zombieapocalypsekit.html) | CC0 1.0 | 德国牧羊犬、旧版感染者（源文件保留，当前不加载）、手枪／猎枪／步枪／缠线球棒、皮卡、卡车、油桶、木托盘、垃圾袋、路障、沙发、箱子 |
 | Stylized Nature MegaKit · Standard 免费版 | [Quaternius](https://quaternius.com/packs/stylizednaturemegakit.html) | CC0 1.0 | 松树、枯树、灌木、草丛 |
+| Thin Zombie · Awake Zombie Asset | [Rosswet Mobile / dogchicken](https://opengameart.org/content/thin-zombie-awake-zombie-asset) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) | 当前感染者模型、皮肤贴图与待机／行走／奔跑／攻击／受击／死亡动画 |
 | WRAD ARMS | [wriks](https://wriks.itch.io/wrad-arms) | CC0 1.0 | 带 50 个骨骼节点的第一人称双臂、手掌、手指与皮肤贴图 |
 
-Quaternius 模型文件取自公开的 [FreeModels 分发仓库](https://github.com/agentkaerf/FreeModels)，同时核对作者原始发布页面与包内许可；手臂从 wriks 的 itch.io 免费下载入口获取。所有模型保留原始网格和贴图，在运行时调整比例、颜色、朝向、材质及骨骼姿势。感染者与狗使用包内动画，手臂使用项目自定义的双骨骼 IK、手指握持及换弹运动。
+Quaternius 模型文件取自公开的 [FreeModels 分发仓库](https://github.com/agentkaerf/FreeModels)，同时核对作者原始发布页面与包内许可；手臂从 wriks 的 itch.io 免费下载入口获取。Quaternius 与 wriks 模型保留原始网格和贴图，在运行时调整比例、颜色、朝向、材质及骨骼姿势。狗使用包内动画，手臂使用项目自定义的双骨骼 IK、手指握持及换弹运动。
+
+当前感染者采用 **Thin Zombie by Rosswet Mobile**，依据 **CC BY 3.0** 使用与修改。原始下载为作者在上述页面提供的 `new_thin_zom.zip`。修改：校验旧 Blender 网格、将原贴图连接到 PBR 材质、将六个原始动作烘焙并重命名、导出嵌入贴图的 GLB、调整游戏内比例与朝向。转换脚本为 `scripts/convert-zombie.py`。作者未参与本游戏，也不表示为本游戏背书。署名亦随构建保存在 `public/credits.html`，可从暂停菜单访问。
 
 原始许可文本保存在：
 
 - `public/models/licenses/quaternius-zombie-CC0.txt`
 - `public/models/licenses/quaternius-nature-CC0.txt`
 - `public/models/licenses/wrad-arms-CC0.txt`
+- `public/models/licenses/rosswet-zombie-CC-BY-3.0.txt`
 
 末日模型包的 `License.txt` 标题误写为 “Ultimate Platformer Pack”，其 CC0 正文与作者的 Zombie Apocalypse Kit 官方页面一致；保留原文并在此说明。
 

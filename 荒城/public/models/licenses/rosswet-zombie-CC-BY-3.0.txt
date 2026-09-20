@@ -1,0 +1,12 @@
+Thin Zombie [ Awake Zombie Asset ]
+Author: Rosswet Mobile (submitted by dogchicken)
+Source: https://opengameart.org/content/thin-zombie-awake-zombie-asset
+Original download: https://opengameart.org/sites/default/files/new_thin_zom.zip
+License: Creative Commons Attribution 3.0 Unported (CC BY 3.0)
+License URL: https://creativecommons.org/licenses/by/3.0/
+Legal code: https://creativecommons.org/licenses/by/3.0/legalcode
+
+Changes made for 荒城: validated the legacy Blender mesh, connected the original
+texture to a PBR material, baked/renamed six original animation actions and
+converted to embedded GLB. Runtime size and facing direction are adjusted.
+No endorsement by the original author is implied.
