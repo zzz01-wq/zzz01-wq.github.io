@@ -2,12 +2,14 @@
 export function setupLayout() {
   const game = document.querySelector("#game");
   const card = document.querySelector(".home-status");
+  const nav = document.querySelector(".bottom-nav");
   const actions = document.querySelector(".garden-actions");
   let frame;
   const update = () => {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
-      const bottom = game.clientHeight - card.offsetTop + 16;
+      const anchor = card.hidden ? nav : card;
+      const bottom = game.clientHeight - anchor.offsetTop + 16;
       game.style.setProperty("--actions-bottom", `${bottom}px`);
       game.style.setProperty(
         "--scene-bottom",
@@ -16,7 +18,7 @@ export function setupLayout() {
     });
   };
   const observer = new ResizeObserver(update);
-  [game, card, actions].forEach((element) => observer.observe(element));
+  [game, card, nav, actions].forEach((element) => observer.observe(element));
   window.addEventListener("resize", update);
   update();
 }

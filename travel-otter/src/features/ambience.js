@@ -1,6 +1,7 @@
 import { $, state, ui, save } from "../store.js";
 import { icon } from "../icons.js";
 import { BGM_DATA } from "../assets.js";
+import { currentCharacter } from "../characters.js";
 export function createAmbience(app) {
   const show = (...args) => app.show(...args);
   const openPanel = (...args) => app.openPanel(...args);
@@ -17,6 +18,7 @@ export function createAmbience(app) {
   function atmosphereRender() {
     ensureGrowth();
     const period = currentPeriod();
+    const character = currentCharacter();
     $("#game").dataset.period = period;
     $("#game").dataset.environmentMotion = String(state.ambience.motion);
     $("#weather-label").textContent = {
@@ -24,7 +26,14 @@ export function createAmbience(app) {
       sunset: "黄昏 · 暖风",
       night: "夜深 · 静谧",
     }[period];
-    $("#profile-subtitle").textContent = state.growth.title || "阿獭的河畔小屋";
+    $("#profile-avatar").src = character.avatar;
+    $("#profile-avatar").alt = `${character.name}的头像`;
+    $("#profile-subtitle").textContent =
+      state.growth.title || `${character.name}的河畔小屋`;
+    $(".profile").setAttribute(
+      "aria-label",
+      `查看小屋成长与更换${character.name}`,
+    );
     $("#profile-level").textContent = "LV." + (growthLevel() + 1);
     $("#growth-dot").hidden = !app.GOALS.some(
       (g) => g.value() >= g.need && !state.growth.claimed.includes(g.id),

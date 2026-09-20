@@ -2,6 +2,7 @@ import { state, ui, save, log } from "../store.js";
 import { icon } from "../icons.js";
 import { PLACES, TRAVEL_CONTENT } from "../data.js";
 import { allSouvenirs } from "./journey.js";
+import { CHARACTER_OPTIONS, characterFor } from "../characters.js";
 export function createGrowth(app) {
   const show = (...args) => app.show(...args);
   const render = (...args) => app.render(...args);
@@ -180,7 +181,17 @@ export function createGrowth(app) {
         ? ((xp - LEVELS[lv].xp) / (next.xp - LEVELS[lv].xp)) * 100
         : 100;
     let found = state.gifts.filter((n) => n > 0).length;
-    let html = `<div class="growth-hero"><span class="level-medal">${icon("charm")}<b>${lv + 1}</b></span><div><small>小屋成长 · LV.${lv + 1}</small><h3>${LEVELS[lv].name}</h3><div class="growth-meter"><i style="width:${percent}%"></i></div><p>${next ? `${xp} / ${next.xp} 成长点 · 下一阶段：${next.name}` : "全部阶段已达成 · 谢谢你珍藏这些日常"}</p></div></div><div class="tabs growth-tabs">${[
+    const activeCharacter = characterFor();
+    const characterSwitcher = `<section class="character-switcher"><div class="character-switcher-head"><span class="character-switcher-avatar"><img src="${activeCharacter.avatar}" alt="" draggable="false"></span><div><small>我的旅行小宠</small><h3>${activeCharacter.name}</h3><p>${activeCharacter.role} · ${activeCharacter.description}</p></div></div><div class="character-options" role="listbox" aria-label="选择主角">${CHARACTER_OPTIONS.map(
+      (option) => {
+        const character = characterFor(option.id);
+        const selected = character.id === activeCharacter.id;
+        return `<button class="character-choice ${selected ? "selected" : ""}" data-character="${character.id}" aria-selected="${selected}"><span class="character-choice-avatar"><img src="${character.avatar}" alt="" draggable="false"></span><span><b>${character.name}</b><small>${character.species}</small></span><em>${selected ? "使用中" : "选择"}</em></button>`;
+      },
+    ).join(
+      "",
+    )}</div><p class="character-switcher-note">更换主角不会重置旅行、相册、收藏或成长进度。</p></section>`;
+    let html = `${characterSwitcher}<div class="growth-hero"><span class="level-medal">${icon("charm")}<b>${lv + 1}</b></span><div><small>小屋成长 · LV.${lv + 1}</small><h3>${LEVELS[lv].name}</h3><div class="growth-meter"><i style="width:${percent}%"></i></div><p>${next ? `${xp} / ${next.xp} 成长点 · 下一阶段：${next.name}` : "全部阶段已达成 · 谢谢你珍藏这些日常"}</p></div></div><div class="tabs growth-tabs">${[
       ["treasures", "特产收藏"],
       ["goals", "旅途里程碑"],
       ["titles", "我的称号"],
@@ -204,7 +215,7 @@ export function createGrowth(app) {
         ? `<div class="display-shelf"><span>${icon(displayedKeepsake.icon)}</span><div><small>今日陈列 · 沿途发现</small><h3>${displayedKeepsake.name}</h3><p>${displayedKeepsake.story}</p></div></div>`
         : display >= 0
           ? `<div class="display-shelf"><span>${PLACES[display].icon}</span><div><small>今日陈列</small><h3>${PLACES[display].gift}</h3><p>来自${PLACES[display].name} · 一份值得记住的小礼物</p></div></div>`
-          : `<p class="intro">架子已擦干净，等阿獭带回第一份小礼物。点击藏品能查看来历并换上陈列。</p>`;
+          : `<p class="intro">架子已擦干净，等${activeCharacter.name}带回第一份小礼物。点击藏品能查看来历并换上陈列。</p>`;
       html += `<div class="collection-summary"><b>目的地特产 ${found} / 4</b><span>累计 ${state.gifts.reduce((a, b) => a + b, 0)} 份</span></div><div class="items">${PLACES.map((p, i) => `<button class="souvenir" data-treasure="${i}" ${!state.gifts[i] ? "disabled" : ""}><span>${state.gifts[i] ? p.icon : icon("lock")}</span><strong>${state.gifts[i] ? p.gift : "尚未发现"}</strong><small>${p.name} · ${state.gifts[i] ? "珍藏 " + state.gifts[i] + " 份" : "等一份远方礼物"}</small></button>`).join("")}</div><div class="section-label">沿途小物 · ${foundKeepsakes} / ${keepsakes.length}</div><p class="intro">不同的小路，会留下不同的东西。带上帐篷，有机会把第二件小物也带回家。</p><div class="discovery-grid">${keepsakes
         .map((souvenir) => {
           const count = state.souvenirs[souvenir.id] || 0;
@@ -223,7 +234,7 @@ export function createGrowth(app) {
         "</div>";
     } else {
       let titles = availableTitles();
-      html += `<p class="intro">称号会显示在左上角的小屋名牌上。完成里程碑并领取奖励后解锁。</p><div class="title-list"><button class="title-card ${!state.growth.title ? "selected" : ""}" data-title=""><span>${icon("home")}</span><div><b>阿獭的河畔小屋</b><small>默认名牌</small></div><em>${!state.growth.title ? "使用中" : "使用"}</em></button>${GOALS.filter(
+      html += `<p class="intro">称号会显示在左上角的小屋名牌上。完成里程碑并领取奖励后解锁。</p><div class="title-list"><button class="title-card ${!state.growth.title ? "selected" : ""}" data-title=""><span>${icon("home")}</span><div><b>${activeCharacter.name}的河畔小屋</b><small>默认名牌</small></div><em>${!state.growth.title ? "使用中" : "使用"}</em></button>${GOALS.filter(
         (g) => g.title,
       )
         .map(
@@ -237,10 +248,11 @@ export function createGrowth(app) {
   function renderTreasure(i) {
     if (!PLACES[i] || !state.gifts[i]) return;
     let p = PLACES[i];
+    const character = characterFor();
     const stories = [
       "手心里凉凉的小石头，磨得很圆，像湖面落下的一颗月亮。",
       "把贝壳贴近耳边，仿佛还能听到那天的浪声。",
-      "森林里捡来的橡果。阿獭说，挑它的时候还遇见了一只松鼠。",
+      `森林里捡来的橡果。${character.name}说，挑它的时候还遇见了一只松鼠。`,
       "小镇铺子里的手绘风铃。轻轻晃一晃，就想起桥边那场雨。",
     ];
     show(

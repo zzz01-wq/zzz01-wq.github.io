@@ -2,9 +2,12 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
     <meta name="theme-color" content="#6a805d" />
-    <title>小獭远行</title>
+    <title>旅行小宠</title>
     <link rel="stylesheet" href="./src/styles/loading.css" />
     <link rel="stylesheet" href="./src/styles/base.css" />
     <link rel="stylesheet" href="./src/styles/responsive.css" />
@@ -18,13 +21,21 @@
       id="loading-screen"
       class="loading-screen"
       aria-labelledby="loading-title"
-      aria-busy="true">
+      aria-busy="true"
+    >
       <div class="loading-card">
         <div class="loading-leaf" aria-hidden="true">☘</div>
         <p class="loading-eyebrow">一段小小的旅程，即将开始</p>
-        <h1 id="loading-title">小獭远行</h1>
-        <p id="loading-resource" role="status" aria-live="polite">正在准备河畔小屋…</p>
-        <progress id="loading-progress" max="100" value="0" aria-label="资源加载进度"></progress>
+        <h1 id="loading-title">旅行小宠</h1>
+        <p id="loading-resource" role="status" aria-live="polite">
+          正在准备河畔小屋…
+        </p>
+        <progress
+          id="loading-progress"
+          max="100"
+          value="0"
+          aria-label="资源加载进度"
+        ></progress>
         <div class="loading-details">
           <span id="loading-count">准备加载资源</span>
           <b id="loading-percent">0%</b>
@@ -34,16 +45,20 @@
         <p class="loading-footnote">收拾一点期待，等风捎来远方的消息。</p>
       </div>
     </section>
-    <noscript>请开启 JavaScript，让阿獭开始旅行。</noscript>
+    <noscript>请开启 JavaScript，让小宠开始旅行。</noscript>
     <main class="game" id="game" inert>
       <section class="world" aria-label="河畔小屋">
-        <img class="scene" data-asset="cottage" alt="河畔木屋，绿树、小路和溪流" />
+        <img
+          class="scene"
+          data-asset="cottage"
+          alt="河畔木屋，绿树、小路和溪流"
+        />
         <div class="world-shade"></div>
         <div class="play-space">
           <button class="otter" id="otter" aria-label="和阿獭说说话">
             <img data-asset="otter" alt="戴着红围巾的阿獭" />
           </button>
-          <div class="status-bubble" id="bubble">阿獭正在翻看旅行手册</div>
+          <div class="status-bubble" id="bubble">阿獭正在整理小屋</div>
           <div class="clovers" id="clovers"></div>
           <div class="garden-note" id="garden-note"></div>
           <button class="visitor" id="visitor" hidden aria-label="招待小兔">
@@ -52,7 +67,7 @@
           </button>
           <div class="travel-sign" id="travel-sign" hidden>
             <span data-icon="mail"></span>
-            <strong>阿獭出门旅行啦</strong>
+            <strong id="travel-sign-title">阿獭出门旅行啦</strong>
             <small>风会替你捎去问候</small>
           </div>
         </div>
@@ -60,14 +75,21 @@
       <div class="garden-actions">
         <button class="scene-label bag-hotspot" id="bag-hotspot">
           <span data-icon="bag"></span>
-          准备行囊
+          <span class="scene-label-copy" id="bag-hotspot-label">准备行囊</span>
         </button>
       </div>
       <header class="hud">
-        <div class="profile" role="button" tabindex="0" aria-label="查看小屋成长">
-          <div class="avatar"><img data-asset="otter" alt="" /></div>
+        <div
+          class="profile"
+          role="button"
+          tabindex="0"
+          aria-label="查看小屋成长与更换主角"
+        >
+          <div class="avatar">
+            <img id="profile-avatar" data-asset="otter" alt="" />
+          </div>
           <div>
-            <h1>小獭远行</h1>
+            <h1 id="game-title">旅行小宠</h1>
             <span>
               <b id="profile-level">LV.1</b>
               <span id="profile-subtitle">阿獭的河畔小屋</span>
@@ -86,7 +108,11 @@
         </div>
       </header>
       <div class="ambience-actions" role="group" aria-label="昼夜与声音控制">
-        <button class="sound-button" id="sound-button" aria-label="开启背景音乐">
+        <button
+          class="sound-button"
+          id="sound-button"
+          aria-label="开启背景音乐"
+        >
           <span data-icon="mute"></span>
           静音
         </button>
@@ -115,7 +141,12 @@
         <small>信箱</small>
         <b id="mail-badge" hidden>!</b>
       </button>
-      <section class="home-status">
+      <section
+        class="home-status journey-widget"
+        id="home-status"
+        hidden
+        aria-live="polite"
+      >
         <div class="status-mark" id="status-icon" data-icon="home"></div>
         <div class="status-copy">
           <h2 id="status-title">阿獭在家</h2>
@@ -156,7 +187,8 @@
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        tabindex="-1">
+        tabindex="-1"
+      >
         <header class="modal-head">
           <div class="panel-emblem" id="panel-emblem"></div>
           <div>

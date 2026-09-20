@@ -1,0 +1,6 @@
+<!doctype html><html><body style="margin:0"><script type="module">
+import * as THREE from 'three';import {AssetLibrary} from '/src/assets.js';
+const assets=await new AssetLibrary().load();window.assets=assets;window.THREE=THREE;
+const scene=new THREE.Scene();scene.background=new THREE.Color('#657067');const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(1200,800);renderer.outputColorSpace=THREE.SRGBColorSpace;document.body.append(renderer.domElement);const camera=new THREE.PerspectiveCamera(55,1.5,.01,100);scene.add(new THREE.HemisphereLight('#ffffff','#626756',3));const light=new THREE.DirectionalLight('#fff5da',3);light.position.set(2,5,4);scene.add(light);window.preview={scene,camera,renderer};
+const arms=assets.models.get('arms').scene.clone();scene.add(arms);camera.position.set(0,5,17);camera.lookAt(0,0,0);window.ready=true;function frame(){requestAnimationFrame(frame);renderer.render(scene,camera);}frame();
+</script></body></html>

@@ -18,6 +18,7 @@ function fresh() {
     trip: null,
     pending: null,
     photos: [],
+    character: "otter",
     gifts: [0, 0, 0, 0],
     souvenirs: {},
     discoveries: {},
@@ -25,6 +26,7 @@ function fresh() {
     trips: 0,
     fast: true,
     devMode: false,
+    albumDemo: false,
     garden: Array(6).fill(0),
     visitorAt: Date.now() + 60000,
     visitorScheduleVersion: 2,
@@ -49,9 +51,15 @@ function isSave(value) {
     value.inventory
   );
 }
+function normalize(value) {
+  value.albumDemo = value.albumDemo === true;
+  if (!value.character || !["otter", "cat", "parrot"].includes(value.character))
+    value.character = "otter";
+  return value;
+}
 try {
   let v = JSON.parse(localStorage.getItem(SAVE_KEY));
-  state = isSave(v) ? v : fresh();
+  state = isSave(v) ? normalize(v) : fresh();
 } catch {
   state = fresh();
 }
@@ -70,7 +78,7 @@ export function adoptSaved(raw) {
     return false;
   }
   if (!isSave(next)) return false;
-  Object.assign(state, next);
+  Object.assign(state, normalize(next));
   return true;
 }
 export function log(text) {

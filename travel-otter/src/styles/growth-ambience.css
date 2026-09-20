@@ -17,6 +17,133 @@
 #profile-subtitle {
   font-size: 11px;
 }
+.character-switcher {
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid #d7c18d;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f7edcf, #efe2bb);
+  box-shadow: inset 0 2px 0 #fff9e8;
+}
+.character-switcher-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.character-switcher-avatar,
+.character-choice-avatar {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex: none;
+  border: 2px solid #c5b17e;
+  border-radius: 50%;
+  background: #f8f0d9;
+}
+.character-switcher-avatar {
+  width: 70px;
+  height: 70px;
+  padding: 3px;
+}
+.character-switcher-avatar img,
+.character-choice-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.character-switcher-head small,
+.character-switcher-head h3,
+.character-switcher-head p {
+  display: block;
+  margin: 0;
+}
+.character-switcher-head small {
+  color: #a08a60;
+  font-size: 10px;
+}
+.character-switcher-head h3 {
+  margin-top: 3px;
+  color: #756042;
+  font-family: "Songti SC", serif;
+  font-size: 21px;
+}
+.character-switcher-head p {
+  margin-top: 3px;
+  color: #9c865e;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.character-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 13px;
+}
+.character-choice {
+  display: grid;
+  grid-template-columns: 43px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid #d7c18d;
+  border-radius: 13px;
+  background: #fff9e9;
+  color: #786344;
+  text-align: left;
+}
+.character-choice:hover,
+.character-choice:focus-visible {
+  border-color: #a8bb7b;
+  background: #f8f3d8;
+}
+.character-choice.selected {
+  border: 2px solid #a5b87c;
+  padding: 6px;
+  background: #e9efcf;
+}
+.character-choice-avatar {
+  grid-row: 1 / span 2;
+  width: 43px;
+  height: 43px;
+  border-color: #d2c08d;
+}
+.character-choice > span:nth-child(2) {
+  min-width: 0;
+}
+.character-choice b,
+.character-choice small,
+.character-choice em {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.character-choice b {
+  font-size: 13px;
+}
+.character-choice small {
+  margin-top: 2px;
+  color: #a18a60;
+  font-size: 10px;
+}
+.character-choice em {
+  color: #9b865e;
+  font-size: 9px;
+  font-style: normal;
+}
+.character-choice.selected em {
+  color: #718b54;
+  font-weight: 700;
+}
+.character-switcher-note {
+  margin: 10px 1px 0;
+  color: #a18d69;
+  font-size: 10px;
+  line-height: 1.55;
+}
 .ambience-actions {
   position: absolute;
   top: 111px;

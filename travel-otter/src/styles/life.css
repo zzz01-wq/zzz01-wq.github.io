@@ -14,6 +14,21 @@
   object-fit: fill !important;
   pointer-events: none;
 }
+.cat-sprite {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  flex: none;
+  pointer-events: none;
+}
+.cat-sprite > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
 .panel-emblem > .panel-friend {
   width: 100%;
   height: 100%;
@@ -29,13 +44,26 @@
   transform-origin: 50% 90%;
   animation: life-breathe 3.8s ease-in-out infinite;
 }
+.otter > .cat-sprite {
+  transform-origin: 50% 90%;
+  animation: life-breathe 3.8s ease-in-out infinite;
+}
 .otter[data-action="eat"] > .cast-sprite {
+  animation: life-nibble 1.7s ease-in-out infinite;
+}
+.otter[data-action="eat"] > .cat-sprite {
   animation: life-nibble 1.7s ease-in-out infinite;
 }
 .otter[data-action="pack"] > .cast-sprite {
   animation: life-pack 2.5s ease-in-out infinite;
 }
+.otter[data-action="pack"] > .cat-sprite {
+  animation: life-pack 2.5s ease-in-out infinite;
+}
 .otter[data-action="sleep"] > .cast-sprite {
+  animation: life-sleep 4s ease-in-out infinite;
+}
+.otter[data-action="sleep"] > .cat-sprite {
   animation: life-sleep 4s ease-in-out infinite;
 }
 .otter[data-action="sleep"]:after {
@@ -62,7 +90,14 @@
 .otter[data-action="returning"] > .cast-sprite {
   animation: life-step 0.38s ease-in-out infinite;
 }
+.otter[data-action="leaving"] > .cat-sprite,
+.otter[data-action="returning"] > .cat-sprite {
+  animation: life-step 0.38s ease-in-out infinite;
+}
 .otter[data-action="returned"] > .cast-sprite {
+  animation: life-breathe 3s infinite;
+}
+.otter[data-action="returned"] > .cat-sprite {
   animation: life-breathe 3s infinite;
 }
 .visitor {
@@ -139,6 +174,10 @@
 .life-portrait .cast-sprite {
   width: 155px;
   max-height: 185px;
+}
+.life-portrait .cat-sprite {
+  width: 155px;
+  height: 185px;
 }
 .friend-quote {
   padding: 15px 17px;
@@ -398,6 +437,10 @@
   .life-portrait .cast-sprite {
     width: 135px;
   }
+  .life-portrait .cat-sprite {
+    width: 135px;
+    height: 155px;
+  }
   .life-actions {
     gap: 10px;
   }
@@ -493,6 +536,10 @@
   .life-portrait .cast-sprite {
     width: 95px;
   }
+  .life-portrait .cat-sprite {
+    width: 95px;
+    height: 110px;
+  }
   #dialog[data-view="friends"] {
     max-height: calc(100dvh - 24px);
   }
@@ -500,6 +547,7 @@
 @media (prefers-reduced-motion: reduce) {
   .otter,
   .otter > .cast-sprite,
+  .otter > .cat-sprite,
   .visitor > .cast-sprite,
   .otter:after {
     animation: none !important;

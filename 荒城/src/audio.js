@@ -1,0 +1,12 @@
+export class Soundscape {
+ constructor(){this.ctx=null;this.volume=.18;}
+ start(){if(this.ctx){this.ctx.resume();return;}const C=window.AudioContext||window.webkitAudioContext;if(!C)return;this.ctx=new C();const ctx=this.ctx;this.master=ctx.createGain();this.master.gain.value=this.volume;this.master.connect(ctx.destination);const buffer=ctx.createBuffer(1,ctx.sampleRate*4,ctx.sampleRate),data=buffer.getChannelData(0);let previous=0;for(let i=0;i<data.length;i++){previous=(previous+(Math.random()*2-1)*.02)/1.02;data[i]=previous*3.5;}const noise=ctx.createBufferSource();noise.buffer=buffer;noise.loop=true;const filter=ctx.createBiquadFilter();filter.type='lowpass';filter.frequency.value=500;this.wind=ctx.createGain();this.wind.gain.value=.13;noise.connect(filter);filter.connect(this.wind);this.wind.connect(this.master);noise.start();}
+ noise(duration=.12,volume=.8,filterFreq=800){if(!this.ctx)return;const c=this.ctx,b=c.createBuffer(1,Math.max(1,Math.floor(c.sampleRate*duration)),c.sampleRate),a=b.getChannelData(0);for(let i=0;i<a.length;i++)a[i]=(Math.random()*2-1)*Math.pow(1-i/a.length,2);const n=c.createBufferSource();n.buffer=b;const f=c.createBiquadFilter();f.type='lowpass';f.frequency.value=filterFreq;const g=c.createGain();g.gain.value=volume;n.connect(f);f.connect(g);g.connect(this.master);n.start();n.onended=()=>{n.disconnect();f.disconnect();g.disconnect();};}
+ tone(hz,duration,volume=.3,type='sine',endHz=hz){if(!this.ctx)return;const c=this.ctx,o=c.createOscillator(),g=c.createGain();o.type=type;o.frequency.setValueAtTime(hz,c.currentTime);o.frequency.exponentialRampToValueAtTime(Math.max(1,endHz),c.currentTime+duration);g.gain.setValueAtTime(volume,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+duration);o.connect(g);g.connect(this.master);o.start();o.stop(c.currentTime+duration);o.onended=()=>{o.disconnect();g.disconnect();};}
+ shot(type){this.noise(type==='shotgun'?.4:.2,type==='shotgun'?2:1.5,1800);this.tone(105,.17,.8,'triangle',30);}
+ melee(){this.noise(.17,.8,400);}
+ bark(distance=1){this.tone(150,.16,.7/Math.max(1,distance/4),'sawtooth',78);setTimeout(()=>this.tone(180,.12,.4/Math.max(1,distance/4),'triangle',90),180);}
+ foot(){this.noise(.08,.18,250);}
+ hit(){this.noise(.16,.8,450);this.tone(70,.18,.4,'sine',30);}
+ update(weather,paused){if(this.wind)this.wind.gain.setTargetAtTime(paused?.035:weather==='暴雨'?.65:weather==='小雨'?.35:.12,this.ctx.currentTime,.6);}
+}

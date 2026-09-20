@@ -271,3 +271,133 @@
     top: -3%;
   }
 }
+
+/* Keep the actionable travel state friendly and compact instead of a wide status bar. */
+.home-status.journey-widget {
+  width: min(210px, calc(100% - 32px));
+  min-height: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 13px 14px 14px;
+  border-radius: 25px;
+  background: linear-gradient(145deg, #fff9e7, #f4e2b8);
+  border-color: #fff4d2;
+  box-shadow:
+    0 5px 0 #ad9362,
+    0 10px 22px #40513333;
+  text-align: center;
+}
+.journey-widget .status-mark {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto;
+  padding: 8px;
+  border: 2px solid #b3c88e;
+  border-radius: 50%;
+  background: #e4edca;
+  box-shadow: inset 0 2px 0 #f8f5d8;
+}
+.journey-widget .status-copy {
+  width: 100%;
+  flex: none;
+}
+.journey-widget .status-copy h2 {
+  font-size: 17px;
+  line-height: 1.35;
+}
+.journey-widget .status-copy p {
+  margin: 2px auto 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.journey-widget > .primary {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+.journey-widget .trip-progress {
+  right: 16px;
+  bottom: 6px;
+  left: 16px;
+  height: 4px;
+}
+.journey-widget[data-state="travel"] .status-mark {
+  border-color: #aebd83;
+  background: #e5e9c2;
+}
+.journey-widget[data-state="ready"] .status-mark {
+  border-color: #d2b97b;
+  background: #f5e2af;
+}
+.scene-label > .scene-label-copy {
+  width: auto;
+  height: auto;
+}
+@media (max-width: 700px) {
+  .home-status.journey-widget {
+    width: min(190px, calc(100% - 28px));
+    gap: 6px;
+    padding: 11px 12px 13px;
+  }
+  .journey-widget .status-mark {
+    width: 45px;
+    height: 45px;
+    padding: 7px;
+  }
+  .journey-widget .status-copy h2 {
+    font-size: 15px;
+  }
+  .journey-widget .status-copy p {
+    font-size: 10px;
+  }
+  .journey-widget > .primary {
+    padding: 8px;
+    font-size: 12px;
+  }
+}
+@media (max-height: 690px) and (max-width: 700px) {
+  .home-status.journey-widget {
+    width: 174px;
+    gap: 5px;
+    padding: 9px 10px 11px;
+  }
+  .journey-widget .status-mark {
+    width: 38px;
+    height: 38px;
+    padding: 6px;
+  }
+  .journey-widget .status-copy h2 {
+    font-size: 14px;
+  }
+  .journey-widget > .primary {
+    padding: 7px 8px;
+    font-size: 11px;
+  }
+}
+@media (max-height: 500px) and (min-width: 600px) {
+  .home-status.journey-widget {
+    width: 180px;
+    padding: 9px 10px 11px;
+  }
+  .journey-widget .status-mark {
+    width: 40px;
+    height: 40px;
+    padding: 6px;
+  }
+  .journey-widget .status-copy h2 {
+    font-size: 14px;
+  }
+  .journey-widget .status-copy p {
+    font-size: 10px;
+  }
+  .journey-widget > .primary {
+    padding: 7px 8px;
+    font-size: 11px;
+  }
+}

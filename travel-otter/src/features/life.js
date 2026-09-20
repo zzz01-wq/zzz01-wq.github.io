@@ -1,7 +1,14 @@
 import { $, state, ui, save, log } from "../store.js";
 import { icon } from "../icons.js";
 import { ITEMS } from "../data.js";
-import { CAST_ATLAS } from "../assets.js";
+import {
+  CAST_ATLAS,
+  CAT_ACTIONS,
+  CAT_AVATAR,
+  PARROT_ACTIONS,
+  PARROT_AVATAR,
+} from "../assets.js";
+import { currentCharacter } from "../characters.js";
 export function createLife(app) {
   const show = (...args) => app.show(...args);
   const openPanel = (...args) => app.openPanel(...args);
@@ -46,12 +53,6 @@ export function createLife(app) {
     },
   ];
   const ACTIONS = {
-    read: {
-      sprite: 0,
-      label: "看书",
-      line: "再翻一页，就知道山的另一边是什么了。",
-      status: "阿獭在看书",
-    },
     eat: {
       sprite: 1,
       label: "吃饭",
@@ -94,6 +95,18 @@ export function createLife(app) {
     const [x, y, w, h] = CAST_RECTS[index];
     return `<span class="cast-sprite ${extra}" style="aspect-ratio:${w}/${h}"><img src="${CAST_ATLAS}" alt="" draggable="false" style="width:${(1254 / w) * 100}%;height:${(1254 / h) * 100}%;left:${(-x / w) * 100}%;top:${(-y / h) * 100}%"></span>`;
   }
+  function characterArt(mode, index, extra = "") {
+    const character = currentCharacter();
+    if (character.id === "cat") {
+      const source = CAT_ACTIONS[mode] || CAT_AVATAR;
+      return '<span class="cat-sprite cat-character-sprite ' + extra + '"><img src="' + source + '" alt="" draggable="false"></span>';
+    }
+    if (character.id === "parrot") {
+      const source = PARROT_ACTIONS[mode] || PARROT_AVATAR;
+      return '<span class="cat-sprite parrot-sprite ' + extra + '"><img src="' + source + '" alt="" draggable="false"></span>';
+    }
+    return castArt(index, extra);
+  }
   function visitorTiming(first = false) {
     const rule = state.fast ? VISITOR_RULES.fast : VISITOR_RULES.normal;
     return first ? rule.first : rule.next;
@@ -130,9 +143,19 @@ export function createLife(app) {
   }
   function ensureLife() {
     const now = Date.now();
-    if (!state.life)
-      state.life = { mode: "read", until: now + 18000, cycle: 0 };
-    if (!ACTIONS[state.life.mode]) state.life.mode = "read";
+    let lifeChanged = false;
+    if (!state.life) {
+      state.life = { mode: "eat", until: now + 18000, cycle: 0 };
+      lifeChanged = true;
+    }
+    if (!ACTIONS[state.life.mode]) {
+      state.life.mode = "eat";
+      lifeChanged = true;
+    }
+    if (!Number.isInteger(state.life.cycle)) {
+      state.life.cycle = 0;
+      lifeChanged = true;
+    }
     if (!state.friends) state.friends = {};
     FRIENDS.forEach((f) => {
       if (!state.friends[f.id])
@@ -144,6 +167,7 @@ export function createLife(app) {
           favorite: false,
         };
     });
+    if (lifeChanged) save();
     if (!Number.isInteger(state.visitorCursor)) state.visitorCursor = 0;
     if (state.visitorScheduleVersion !== 2) {
       state.visitorScheduleVersion = 2;
@@ -171,7 +195,8 @@ export function createLife(app) {
     state.visitor = {
       id: f.id,
       arrivedAt: now,
-      leaveAt: now + (state.fast ? VISITOR_RULES.fast : VISITOR_RULES.normal).stay,
+      leaveAt:
+        now + (state.fast ? VISITOR_RULES.fast : VISITOR_RULES.normal).stay,
       chatted: false,
       fed: false,
       reaction: f.hello,
@@ -206,7 +231,7 @@ export function createLife(app) {
     ensureLife();
     if (motion && now >= motion.until) motion = null;
     if (state.status === "home" && !state.pending && now >= state.life.until) {
-      const sequence = ["read", "eat", "sleep", "read", "pack"];
+      const sequence = ["eat", "sleep", "pack"];
       do {
         state.life.cycle = (state.life.cycle + 1) % sequence.length;
       } while (sequence[state.life.cycle] === state.life.mode);
@@ -249,39 +274,49 @@ export function createLife(app) {
       index = motion.kind === "leaving" ? 4 : 5;
       mode = motion.kind;
     } else if (state.pending) mode = "returned";
-    const key = mode;
+    const key = currentCharacter().id + ":" + mode;
     const actor = $("#otter");
     if (actorKey !== key) {
-      actor.innerHTML = castArt(index);
+      actor.innerHTML = characterArt(mode, index);
       actor.dataset.action = mode;
       actorKey = key;
     }
     actor.hidden = travel && !motion;
     $("#bubble").hidden = travel || !!motion;
     $("#travel-sign").hidden = !travel || !!motion;
-    $("#bag-hotspot").hidden = travel || !!motion;
+    $("#bag-hotspot").hidden = travel || !!motion || !!state.pending;
     actor.setAttribute(
       "aria-label",
       state.pending
-        ? "阿獭带着礼物回来了"
-        : "和阿獭互动，当前" + ACTIONS[state.life.mode].label,
+        ? `${currentCharacter().name}带着礼物回来了`
+        : `和${currentCharacter().name}互动，当前` +
+            ACTIONS[state.life.mode].label,
     );
     $("#life-button").hidden = travel || !!motion || !!state.pending;
     if (!travel && !state.pending && !motion) {
       if (!ready) {
-        $("#status-title").textContent = ACTIONS[mode].status;
+        $("#status-title").textContent = ACTIONS[mode].status.replaceAll(
+          "阿獭",
+          currentCharacter().name,
+        );
         $("#status-description").textContent =
           mode === "sleep"
             ? "它会自己醒来。也可以提前准备下一份行囊。"
             : mode === "eat"
               ? "吃饱了，才有力气去看更远的风景。"
-              : "点阿獭，可以陪它度过小屋里的时光。";
+              : "它会自己检查行囊，也可以提前准备下一次旅行。";
       }
-      if (now > ui.speechUntil) $("#bubble").textContent = ACTIONS[mode].line;
+      if (now > ui.speechUntil)
+        $("#bubble").textContent = ACTIONS[mode].line.replaceAll(
+          "阿獭",
+          currentCharacter().name,
+        );
     }
     if (motion) {
       $("#status-title").textContent =
-        motion.kind === "leaving" ? "一路顺风，阿獭" : "欢迎回家，阿獭";
+        motion.kind === "leaving"
+          ? `一路顺风，${currentCharacter().name}`
+          : `欢迎回家，${currentCharacter().name}`;
       $("#status-description").textContent =
         motion.kind === "leaving"
           ? "背好行囊，沿着小路慢慢走远。"
@@ -323,16 +358,17 @@ export function createLife(app) {
       openPanel("reward");
       return;
     }
-    const a = ACTIONS[state.status === "ready" ? "pack" : state.life.mode];
+    const actionId = state.status === "ready" ? "pack" : state.life.mode;
+    const a = ACTIONS[actionId];
     show(
-      "阿獭的小日常",
+      `${currentCharacter().name}的小日常`,
       "",
-      `<div class="life-portrait">${castArt(a.sprite)}</div><p class="friend-quote">「${a.line}」</p><p class="intro">它会自己看书、吃饭和打盹，也很喜欢你陪它一会儿。日常吃饭不消耗旅行便当。</p><div class="life-actions">${Object.entries(
+      `<div class="life-portrait">${characterArt(actionId, a.sprite)}</div><p class="friend-quote">「${a.line.replaceAll("阿獭", currentCharacter().name)}」</p><p class="intro">它会自己吃饭、打盹和整理行囊，也很喜欢你陪它一会儿。日常吃饭不消耗旅行便当。</p><div class="life-actions">${Object.entries(
         ACTIONS,
       )
         .map(
           ([id, v]) =>
-            `<button class="secondary ${state.life.mode === id ? "chosen" : ""}" data-life="${id}" ${state.status === "ready" ? "disabled" : ""}>${icon(id === "read" ? "journal" : id === "eat" ? "rice" : id === "sleep" ? "home" : "bag")}<span>${id === "read" ? "一起看书" : id === "eat" ? "陪它吃饭" : id === "sleep" ? "休息一会" : "整理背包"}</span></button>`,
+            `<button class="secondary ${state.life.mode === id ? "chosen" : ""}" data-life="${id}" ${state.status === "ready" ? "disabled" : ""}>${icon(id === "eat" ? "rice" : id === "sleep" ? "home" : "bag")}<span>${id === "eat" ? "陪它吃饭" : id === "sleep" ? "休息一会" : "整理背包"}</span></button>`,
         )
         .join(
           "",
@@ -363,7 +399,7 @@ export function createLife(app) {
       const r = state.friends[f.id];
       html = `${preview ? '<p class="developer-preview-note">开发者预览 · 互动不会消耗物品、改变好感或保存进度。</p>' : ""}<div class="friend-welcome">${castArt(f.sprite)}<div><span class="guest-tag">${preview ? "开发者预览" : "正在做客"}</span><h3>${f.name}</h3><p>${bondLabel(r.bond)} · 好感 ${r.bond}</p><small>${preview ? "仅供查看" : `还会坐 <span id="visit-time">${duration(v.leaveAt - Date.now())}</span>`}</small></div></div><p class="friend-quote">「${v.reaction}」</p><div class="guest-actions"><button class="secondary" data-chat="${f.id}" ${v.chatted ? "disabled" : ""}>${v.chatted ? "已经聊过啦" : "聊聊天 · 好感 +1"}</button><button class="secondary" data-goodbye="${f.id}">挥手道别</button></div>`;
       if (!v.fed) {
-        html += `<div class="section-label">${preview ? "预览互动" : "请它吃点什么 · 每次消耗一份"}</div><p class="intro">${preview ? "可以直接尝试不同食物的回应，实际游戏中的物品和好感不会改变。" : `${r.favorite ? "记住啦：最喜欢" + item(f.like).name + "。" : f.hint} 已装进行囊的最后一份便当会为阿獭保留。`}</p><div class="items">${ITEMS.filter(
+        html += `<div class="section-label">${preview ? "预览互动" : "请它吃点什么 · 每次消耗一份"}</div><p class="intro">${preview ? "可以直接尝试不同食物的回应，实际游戏中的物品和好感不会改变。" : `${r.favorite ? "记住啦：最喜欢" + item(f.like).name + "。" : f.hint} 已装进行囊的最后一份便当会为${currentCharacter().name}保留。`}</p><div class="items">${ITEMS.filter(
           (i) => i.type === "food",
         )
           .map((i) => {
@@ -435,7 +471,7 @@ export function createLife(app) {
     if (!food || food.type !== "food") return;
     const reserved = state.bag.food === foodId ? 1 : 0;
     if ((state.inventory[foodId] || 0) <= reserved) {
-      toast("这一份已经为阿獭装进行囊啦。");
+      toast(`这一份已经为${currentCharacter().name}装进行囊啦。`);
       return;
     }
     v.fed = true;
@@ -496,8 +532,8 @@ export function createLife(app) {
         : id === "eat"
           ? "坐下来，一起慢慢吃。"
           : id === "pack"
-            ? "阿獭开始检查背包里的小物件。"
-            : "阿獭往旁边挪了一点，给你留了位置。",
+            ? `${currentCharacter().name}开始检查背包里的小物件。`
+            : `${currentCharacter().name}开始安排小屋里的日常。`,
     );
   }
 
