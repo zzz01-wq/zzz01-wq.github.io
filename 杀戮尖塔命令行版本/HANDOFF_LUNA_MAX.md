@@ -32,15 +32,23 @@
 | Godot 托管宿主 | `runtime/Main.cs`、Godot 场景与 `runtime/ChoiceAdapters.cs` | 最新重编译通过，0 warning、0 error；headless/TestMode 行为仍有差异 |
 | 战士战斗 | 原版 ActionQueue、出牌、回合、战斗奖励 | `engine_smoke` 通过；固定首战和少量卡牌，不代表全卡池 |
 | 选择交互 | 单选/多选/可跳过/嵌套、原版卡牌组合和遗物桥 | 隔离的 choice adapter smoke 通过；真实遭遇仍需扩大 |
-| 房间流程 | 地图、事件、商店、休息、宝箱和奖励命令 | 固定种子 room-flow smoke 通过所列路径；精英、Boss、全部事件分支未覆盖 |
+| 房间流程 | 地图、各幕 Ancient/Neow、事件、商店、休息、宝箱和奖励命令 | 最新 room-flow 实测商店移除取消、铁匠取消后继续休息、事件多选、宝箱选择；固定幕首验证仍见 `.cache/act-opening-smoke.json`；精英、Boss、全部事件分支仍未覆盖 |
 | TestMode | 快照标记 `TestMode/headless`；关键章节/教程与选择差异已核对并记录 | 还没有逐项审计所有 `TestMode` 分支，也没有普通图形模式对照 |
 | 存档 | 原版自动写入 `SerializableRun`；`continue`、`abandon` | 独立 Godot 进程之间恢复奖励检查点通过；生产默认 `user://terminal-save`，测试使用仓库内隔离路径 |
-| Python HTTP 桥 | Cookie 会话、HTTP 命令、静态网页 | `tests/http_smoke.py` 经真实 loopback HTTP 验证 help/new/move/play/end/abandon；并发、错误边界和崩溃恢复未覆盖 |
-| 网页 | 自有命令框、日志与状态视图、`/api/command` 绑定 | 页面静态资源 + HTTP 命令已验证；实际浏览器操作、IME/移动端和视觉验收未做 |
-| 自动化测试 | `tests/engine_smoke.py`、`choice_adapters_smoke.py`、`room_flow_smoke.py`、`save_smoke.py`、`http_smoke.py` | 五项本轮均通过；报告在 `.cache/*-smoke.json` |
+| Python HTTP 桥 | Cookie 会话、HTTP 命令、静态网页 | 本轮 HTTP smoke 经本机回环通过，验证 Neow 开局、进入战斗、出牌、回合和放弃；并发、错误边界和崩溃恢复未覆盖 |
+| 网页 | 自有命令框、日志与状态视图、全屏路线图和本地手绘层、`/api/command` 绑定 | HTTP 命令已验证；Chrome 临时内存会话中目视检查过地图路线和编号。战斗布局未在战斗快照下目视验收，IME/移动端仍待检查 |
+| 自动化测试 | `tests/engine_smoke.py`、`choice_adapters_smoke.py`、`room_flow_smoke.py`、`save_smoke.py`、`act_opening_smoke.py`、`http_smoke.py` | 最近交互补丁后重跑 engine、choice、room-flow、HTTP smoke 均通过；save 与 act-opening 未随本次补丁重跑；覆盖范围仍有限，不能据此声称 1:1 |
 | README / 准备工具 | 原版提取脚本与运行依赖暂存 | README 和一键准备/构建入口仍待补 |
 
-最新构建日志：`.cache/build-20260921-persistent-smoke.log`。本轮没有保留常驻网页服务；`http_smoke.py` 自行启动并关闭测试服务。
+本轮重编译命令 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 通过，0 warning、0 error。HTTP smoke 使用本机临时回环端口并在结束时关闭服务，没有保留常驻网页服务。
+
+在上述六项 smoke 之后，地图快照加入原版节点连接和有序已走路线，随后重新编译通过（0 warning、0 error）。此阶段源码/程序集哈希为 `a3ad3e2fce80f5ffd088c4eb949fa11719dc1a5227eb43f7fce24b7d7a112535` / `eeaf29a83971295c47f96d77fabdc4d061c418cbe8e52ccae2078f09c5785c01`；没有重跑 smoke。浏览器预览使用临时 8876 回环服务与 TestMode 内存会话，手动通过网页命令打开地图后已关闭服务；没有以此声称战斗 UI 或完整玩法验证。
+
+随后修复了网页敌人意图的空标签显示：桥接快照加入原版意图类型及可用的 `GetHoverTip()` 标题/说明，网页保留原版标签为空时的可见提示，并遵循 `HasIntentTip`。最新 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 通过，0 warning、0 error；`runtime/Main.cs` / Godot Mono assembly SHA-256 为 `71bfaa7c44df958d4d50fdbed232d8f51622fb2c4164d5a80b72830654dbf2ae` / `7320e6e5875ad6d427f007fd3ceb26b35826ce4f431bb38bc36411f7cd961d87`。本次只做构建、JS 语法及补丁格式检查，尚未对毛绒伏地虫的 `INHALE` 状态进行战斗回归或网页目视检查。
+
+本轮更新：命令回显从主规则消息区移入独立滚动历史栏；点击历史项只填入命令框，不会自动执行，小屏幕默认折叠。怪物 Power 状态现在通过原版 PowerModel.HoverTips 格式化标题、增益/减益类别与动态描述，因此易伤显示原版回合说明，力量显示原版数值效果。最新 dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers 通过，0 warning、0 error；node --check web/app.js 与 git diff --check 通过。桌面 Chrome 预览中经网页内置命令框提交只读 help，截图确认命令显示于独立历史栏、help 回答显示在主消息区。runtime/Main.cs / Godot Mono assembly SHA-256 为 85b743274bfe7094676a66b3e58c60ccb69bd2a75db3278f3c8249becaccd622 / 54a7cf410ce3d30d25be85f59a66f9286d0ff552c0e83835b1551045066536b5。未跑测试；未验证历史项点击回填、真实战斗 Power 快照或窄屏布局。
+
+本轮新增仅测试钩子可用的 `__test_kill [敌人编号|all]`，无参数默认击杀全部存活敌人。它在玩家出牌阶段调用原版 `CreatureCmd.Kill(force: true)` 并继续调用 `CombatManager.CheckWinCondition()`，以便测试敌人死亡后的房间、奖励流程；它跳过伤害、格挡和 `ShouldDie`，不覆盖战斗伤害规则。设置 `SPIRECLI_ENABLE_TEST_HOOKS=1` 启动 `server.py` 后，网页终端 `help` 会列出此命令。`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 通过，0 warning、0 error；`runtime/Main.cs` / Godot Mono assembly SHA-256 为 `f6943e6145bbd06a91aed751a61f931e2d12e722bda9ed16aa2be533fe4a04a2` / `a3ac97557bb626822f117ee7bb1af8abe0dcc0999a64cbce13d591133cf51a06`。`git diff --check` 通过；未执行真实战斗回归。
 
 ## 4. 目录与资料索引
 
@@ -71,7 +79,7 @@
 | `.cache/smoke.out`、`.cache/smoke.err` | 旧代码的冒烟证据，不适用于最新版 |
 | `.cache/build.log` | 旧构建日志 |
 | `.cache/service-logs/` | 服务启动的 Godot 日志 |
-| `tests/` | 五项自动化 smoke；不覆盖完整规则或图形模式 |
+| `tests/` | 六项自动化 smoke；不覆盖完整规则或图形模式 |
 | `docs/engine-coverage.md` | 当前覆盖表、原版依据、验证证据和差异 |
 
 交接时没有发现项目级 AGENTS.md，也没有初始化 Git 仓库。新对话仍应检查是否新增了约束文件。
@@ -214,7 +222,7 @@ curl -sS -b .cache/handoff.cookies -c .cache/handoff.cookies \
 - 仅对确认是兼容托管 IL 的暂存副本处理 PE 头；不能批量修改原版、原生二进制或复制整套 Windows System DLL。
 - 当前暂存依赖含 sts2、Sentry、Steamworks.NET、0Harmony、SmartFormat、SmartFormat.ZString、ZString、System.IO.Hashing、Vortice、SharpGen、MonoMod、Mono.Cecil、Iced 等，以 lib 现状和加载结果为准。
 - 使用 Godot SDK 自带 GodotSharp；不要拿用户提供的绑定随意覆盖。
-- Godot 默认用户目录在受限环境可能不能写，曾导致默认日志初始化崩溃。显式 `--log-file` 到项目缓存可绕过日志问题；本轮 `save_smoke` / `http_smoke` 也把 `SPIRECLI_SAVE_DIR` 指到项目内 `res://.cache/spirecli-*`。正式 Host 默认仍写隔离的 `user://terminal-save`。
+- Godot 默认用户目录在受限环境可能不能写，曾导致默认日志初始化崩溃。显式 `--log-file` 到项目缓存可绕过日志问题；本轮 `save_smoke` 用项目内 `res://.cache/spirecli-*` 测跨进程存档，HTTP smoke 用 TestMode 内存存档验证桥接，避免 Neow 挂载 PCK 后从 `res://` 删除存档。正式 Host 默认写隔离的 `user://terminal-save`。
 - 不要把绝对路径写进 `custom_user_dir_name`；Godot 会按用户目录规则拼接，并非任意路径重定向。当前值为 `spire-command-game`。
 - 不要改写 HOME 或 CODEX_HOME。只设置项目专用缓存环境变量。
 - 本机沙箱曾拒绝监听回环端口；之前通过工具的正规提升权限流程启动成功。这不是业务代码失败，不要为绕过它改成对外网监听。
@@ -222,9 +230,15 @@ curl -sS -b .cache/handoff.cookies -c .cache/handoff.cookies \
 
 ## 8. 最新代码基线：本轮已完成
 
-最新 `runtime/Main.cs` 已重新编译，日志 `.cache/build-20260921-persistent-smoke.log`：0 warning、0 error。Godot Mono 为 `4.5.1.stable.mono.official.f62fdbde1`，.NET 为 `10.0.102`。
+最新 `runtime/Main.cs` 已重新编译，日志 `.cache/build-20260921-event-description.log`：0 warning、0 error。Godot Mono 为 `4.5.1.stable.mono.official.f62fdbde1`，.NET 为 `10.0.102`。
 
-`python3 tests/engine_smoke.py` 已在新进程检查原版输入哈希并通过，固定种子 `WEBTEST` 共 23 条命令；包含无局查询、战士开局、按可见路线进入战斗、防御和攻击出牌、缺目标/能量不足拒绝、结束回合、首战奖励、选卡、继续路线以及放弃后重开。最新完整命令与快照在 `.cache/engine-smoke.json`，Godot 日志在 `.cache/engine-smoke-godot.log`。不要引用旧 `smoke.out` 作为新代码证据。
+`python3 tests/engine_smoke.py` 已在新进程检查原版输入哈希并通过，固定种子 `WEBTEST` 共 24 条命令；包含无局查询、`new` 自动触发涅奥、选择开局选项、按可见路线进入战斗、防御和攻击出牌、缺目标/能量不足拒绝、结束回合、首战奖励、选卡、继续路线以及放弃后重开。最新完整命令与快照在 `.cache/engine-smoke.json`，Godot 日志在 `.cache/engine-smoke-godot.log`。不要引用旧 `smoke.out` 作为新代码证据。
+
+`python3 tests/act_opening_smoke.py --seed XHPB63HK` 已通过，16 条命令：普通 `new ironclad` 直接进入固定 Neow，没有调用解锁测试钩子；再用受测试环境变量保护的入口调用原版 `EnterAct` 检查第二、三幕 Ancient 起点、原版 `ActModel.Ancient` 对应的事件选择和后续路线。它未模拟击败 Boss 的完整幕间流程。证据见 `.cache/act-opening-smoke.json`。
+
+涅奥说明占位符处理：`NEOW.pages.INITIAL.description` 在提供的 `zhs/ancients.json`、`eng/ancients.json` 中均不存在。原版 `NEventRoom.SetDescription()` 只在 `LocString.Exists()` 时渲染，终端现复刻此行为，缺失时 `eventText` 留空、选择项仍保留。新增幕首断言已随本轮构建通过。
+
+终端宿主跳过原版 Timeline UI，并使用独立进度目录。为满足标准新局应出现 Neow 的命令交互，`Main.NewRun` 在构造 `UnlockState` 前通过原版 `SaveManager` 将终端自己的 `NeowEpoch` 标为已揭示并写入进度；Neow 事件模型、选项和自动进入仍由原版引擎执行。原版全新空白档的首次进度并不一定揭示 Neow，本项目不因此声称首次进度或 Steam 存档 1:1。
 
 ## 9. 第二优先级：命令、异步与选择机制
 
@@ -349,7 +363,7 @@ rg -n 'ShowScreen|RelicsSelected|FromChooseABundleScreen' .cache/source
 
 ## 14. 网页剩余工作与验收
 
-前端现有 app.js 已接入 GET/POST、状态面板、命令历史、Tab 补全、IME、busy 和连接重试。`tests/http_smoke.py` 已检查服务返回的命令表单与 `/api/command` 请求绑定，并通过 HTTP 真实送出战斗命令；这还不是实际浏览器操作验收。历史现存 sessionStorage；重连只应 GET，不应重发上条 POST。
+前端现有 app.js 已接入 GET/POST、状态面板、命令历史、Tab 补全、IME、busy 和连接重试。本轮 `tests/http_smoke.py` 检查服务返回的命令表单与 `/api/command` 请求绑定，并经 HTTP 完成 Neow 选择、首战出牌和结束回合。这还不是实际浏览器操作验收。历史现存 sessionStorage；重连只应 GET，不应重发上条 POST。
 
 编辑前阅读技能：`/Users/kamesan/.codex/skills/frontend-skill/SKILL.md`，并参考 `docs/interface.md`。
 
@@ -368,7 +382,7 @@ rg -n 'ShowScreen|RelicsSelected|FromChooseABundleScreen' .cache/source
 
 ## 15. HTTP 服务与工具剩余工作
 
-`server.py` 已有静态文件白名单、会话 Cookie、每会话进程和锁、超时终止、会话上限/回收、回环绑定和 Origin/Host 校验。`tests/http_smoke.py` 已在 loopback 实际验证静态页面、脚本、`GET /api/state`、同源 Cookie `POST /api/command` 和游戏命令。服务使用 `fcntl`，当前只验证 macOS；不能声称支持 Windows。
+`server.py` 已有静态文件白名单、会话 Cookie、每会话进程和锁、超时终止、会话上限/回收、回环绑定和 Origin/Host 校验。本轮 `tests/http_smoke.py` 在 loopback 验证静态页面、脚本、`GET /api/state`、同源 Cookie `POST /api/command` 和游戏命令。服务使用 `fcntl`，当前只验证 macOS；不能声称支持 Windows。
 
 - [x] 已实际测试 GET /api/state、POST /api/command 和静态文件，见 `.cache/http-smoke.json`。
 - [ ] 测试同一会话并发请求、不同会话隔离、无效 Cookie、达到会话上限和空闲回收。
@@ -383,15 +397,15 @@ rg -n 'ShowScreen|RelicsSelected|FromChooseABundleScreen' .cache/source
 
 ## 16. 测试计划与完成标准
 
-本轮已跑完以下真实构建和集成 smoke。通过只表示对应场景运行成功，不表示完整规则正确或 1:1。
+本轮重新构建并运行六项集成 smoke，均通过。通过只表示对应场景运行成功，不表示完整规则正确或 1:1。
 
 | 层次 | 必须覆盖 | 证据 |
 | --- | --- | --- |
-| 构建/引擎 | 最新源码、Host 初始化、战士开局、出牌、回合、奖励、重开 | `.cache/build-20260921-persistent-smoke.log`；`.cache/engine-smoke.json` |
+| 构建/引擎 | 最新源码、Host 初始化、战士开局、出牌、回合、奖励、重开 | `.cache/build-20260921-event-description.log`；`.cache/engine-smoke.json` |
 | 选择 | 多选、可跳过、嵌套、bundle、relic、普通战卡牌奖励 | `.cache/choice-adapters-smoke.json`；`.cache/engine-smoke.json` |
-| 房间 | 固定路径的普通战、商店、事件、休息、宝箱 | `.cache/room-flow-smoke.json` |
+| 房间与幕首事件 | 固定路径的普通战、商店、事件、休息、宝箱；Neow 与后两幕 Ancient | `.cache/room-flow-smoke.json`；`.cache/act-opening-smoke.json` |
 | 存档 | 原版奖励检查点、两个 Godot 进程间继续、放弃删除 | `.cache/save-smoke.json` |
-| HTTP | 页面、脚本、会话 Cookie、`help/new/move/play/end/abandon` | `.cache/http-smoke.json` |
+| HTTP | 页面、脚本、会话 Cookie、`help/new/choose/move/play/end/abandon` | 当前报告 `.cache/http-smoke.json`；TestMode 内存存档 |
 | 尚未覆盖 | 所有房间/章节、特殊 UI、全部 TestMode 分支、Steam Cloud、并发/崩溃/边界、真实浏览器和手机 | 详见 `docs/engine-coverage.md` 和第 10–15 节 |
 
 测试用调试入口如有需要，应与正式命令隔离，不能给正式玩家加金钱/改牌来掩盖未完成流程。避免为了凑整局演示手工改血量或跳过事件。
@@ -417,4 +431,16 @@ rg -n 'ShowScreen|RelicsSelected|FromChooseABundleScreen' .cache/source
 - 测试命令与结果，以及是否真的完成原版对照。
 - 不能在只跑通开局或普通战后写“已经 1:1 还原”。
 
-本轮最新构建、引擎、选择、房间、存档和 HTTP smoke 均已执行；真实浏览器 UI、完整玩法覆盖、普通图形模式对照以及 Build 归属证明仍未完成。不得把本阶段命令终端说成完整 1:1 还原。
+上一轮的存档与幕首测试结果见上；最近房间交互补丁后重跑了构建、引擎、选择、房间和 HTTP 检查。真实浏览器中的新选项点击、多选勾选、IME/窄屏、完整玩法覆盖、普通图形模式对照以及 Build 归属证明仍未完成。不得把本阶段命令终端说成完整 1:1 还原。
+
+## 19. 最新补充：房间选项与多选交互（2026-09-21）
+
+检查并修复休息处、事件、商店、普通奖励、卡牌/遗物选择、宝箱和路线的命令提示及网页输入。
+
+- 铁匠和烹饪、商店移除、卡牌移除奖励中，仅当原版 `CardSelectorPrefs.Cancelable` 为 true 时才允许 `back`；取消通过空选择返回原版调用方。商店移除选牌取消后不扣金币。
+- 固定 `WEBTEST` 房间流程实测：商店移除前后金币均为 116，项目继续可买；铁匠选牌 `back` 后 Smith 仍在列表且不可离开，随后 Heal 成功并开放路线。
+- 多选快照提供原版 `min/max` 范围；网页点选卡牌可累积/取消待选项，再点击“确认选择”提交 `choose 1 2`。
+- 单选事件、房间候选项、跳过/返回按钮、商店商品和可达路线点击后直接调用对应内置命令；命令框保留为手动操作方式。命令历史项点击仍只填入命令框。此次前端改动后 `node --check web/app.js` 与 `git diff --check` 通过；未做浏览器点测。上方运行流程测试结果来自之前的交互补丁，不覆盖此次点击直执行行为。
+- 修复全屏路线页可能遮住休息处选择的问题：手动输入 `move` 会先收起路线页；进入休息处后优先显示原版营火行动，选项清空且可离开后再允许自动打开地图。营火选项使用“营火行动”标题。`node --check web/app.js` 和 `git diff --check` 通过；未在浏览器中重走休息处流程。
+- 最新 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 通过（0 warning、0 error）；`engine_smoke.py`、`choice_adapters_smoke.py`、`room_flow_smoke.py`、`http_smoke.py`、`node --check web/app.js`、`python3 -m py_compile tests/room_flow_smoke.py`、`git diff --check` 通过。存档与幕首 smoke 未在本轮最新补丁后重跑。
+- 最新 `runtime/Main.cs` / Godot Mono assembly SHA-256：`ab2b9bcf5e03276db96248db571f2955a47497bca9aa411fa8d90812fd2f3287` / `9254deee39868942ee2251df107e617aa23cf07235fec47bbf6d550cbb18c7e9`。原版来源边界、TestMode 差异、Build 归属及完整性限制仍按 `docs/engine-coverage.md` 和 `docs/sources.md`。

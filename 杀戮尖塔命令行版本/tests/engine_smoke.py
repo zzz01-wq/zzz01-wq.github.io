@@ -9,6 +9,7 @@ import json
 import os
 import platform
 import queue
+import re
 import shutil
 import subprocess
 import threading
@@ -34,6 +35,36 @@ def sha256(path: Path) -> str:
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def resolve_opening_event(send, state: dict) -> dict:
+    require(state.get("phase") == "Event" and state.get("options"),
+            "A new standard run did not enter its Neow opening event")
+    for _ in range(12):
+        if state.get("phase") != "Event" or state.get("canLeave"):
+            break
+        enabled = [option for option in state.get("options", []) if not option.get("disabled")]
+        require(enabled, "The opening event had no enabled original options")
+        state = send(f"choose {enabled[0]['index']}")
+        for _ in range(180):
+            prompt = state.get("prompt", "")
+            if prompt.startswith("战利品"):
+                state = send("take 1")
+            elif prompt.startswith("选择卡牌奖励"):
+                state = send("choose 1")
+            elif state.get("phase") == "choice" and state.get("options"):
+                match = re.search(r"选择 (\d+)[–-](\d+) 张牌", prompt)
+                if match:
+                    minimum = int(match.group(1))
+                    state = send("skip" if minimum == 0 else
+                                 "choose " + " ".join(str(index + 1) for index in range(minimum)))
+                else:
+                    state = send("choose 1")
+            else:
+                break
+    require(state.get("phase") == "Event" and state.get("canLeave") and state.get("routes"),
+            "The Neow opening event did not finish with original first-floor routes available")
+    return state
 
 
 class GameHost:
@@ -231,7 +262,7 @@ def main() -> int:
         "main_cs_sha256": sha256(ROOT / "runtime" / "Main.cs"),
         "assembly_sha256": sha256(ASSEMBLY),
         "seed": args.seed,
-        "initial_progress": "fresh singleplayer profile 1; ascension 0",
+        "initial_progress": "fresh terminal profile 1; Neow-ready standard run; ascension 0",
         "commands": [],
         "godot_log": str(log_path),
     }
@@ -253,6 +284,7 @@ def main() -> int:
         state = host.command(f"new ironclad {args.seed} 0")
         require(state.get("seed") == args.seed and state.get("player") is not None,
                 "new ironclad did not create a run")
+        state = resolve_opening_event(host.command, state)
         route = next((item for item in state.get("routes", []) if item.get("name") == "Monster"), None)
         require(route is not None, "The selected seed has no visible first Monster route")
 

@@ -6,14 +6,26 @@
 <main>
 <section class="workspace" aria-label="游戏命令终端">
 <div class="workspace-heading"><div><span class="eyebrow">THE ASCENT</span><h1 id="location">尖塔入口</h1></div><span id="stage" class="stage">等待启程</span></div>
+<div id="encounter" class="encounter" aria-live="polite" hidden></div>
+<div class="terminal-body">
 <div id="scroll-area" class="scroll-area">
 <div id="welcome" class="welcome"><div class="tower" aria-hidden="true"><span>╱╲</span><span>│ ▴ │</span><span>╱│   │╲</span><span>│ ▴ ▴ │</span><span>╱│     │╲</span><span>│ ▴ ▴ ▴ │</span><span>╱│       │╲</span><span>▔▔▔▔▔▔▔▔▔▔▔</span></div><span class="eyebrow">以文字，踏入尖塔。</span><h2>每一步，由你下令。</h2><p>扮演战士，构筑卡组，直面尖塔。<br>在下方输入命令，开始你的旅程。</p><div class="start-line"><span>›</span><code>new ironclad</code><span class="enter-hint">↵ 开始</span></div><p class="small-note">原版规则引擎 · 中文命令终端 · 适配验证中</p></div>
 <div id="journal" class="journal" aria-live="polite" aria-relevant="additions"></div>
-<div id="encounter" class="encounter" hidden></div>
+<section id="map-view" class="map-view" role="dialog" aria-modal="true" aria-label="旅程地图" hidden>
+<div class="map-heading"><div><span class="eyebrow">ROUTE MAP</span><h2>旅程路线</h2></div><div class="map-tools" role="group" aria-label="路线标注工具"><button id="map-draw" type="button" aria-pressed="false">手绘</button><button id="map-erase" type="button" aria-pressed="false">擦除</button><button id="map-clear" type="button">清除笔迹</button><button id="map-close" type="button" aria-label="收起地图">收起</button></div></div>
+<div class="map-canvas" role="region" tabindex="0" aria-label="可滚动查看完整路线图"><svg id="map-svg" role="img" aria-label="尖塔路线图"><g id="map-guides"></g><g id="map-links"></g><g id="map-nodes"></g><g id="map-ink"></g></svg></div>
+<div class="map-footer"><div id="map-legend" class="map-legend"></div><div id="map-next" class="map-next"></div></div>
+<p class="map-note">滚轮或触屏滑动可查看完整路线。路线取自原版节点与连接；可点击可达节点直接前进，也可在命令框手动输入 <code>move 编号</code>。手绘线只在此标签页用于规划。</p>
+</section>
 <div id="choice" class="choice" hidden></div>
-<div id="hand" class="hand" hidden></div>
 </div>
-<div class="command-area"><div class="prompt-line"><span id="prompt">正在连接规则引擎…</span><span id="working" hidden>结算中<span class="dots">…</span></span></div><form id="command-form" autocomplete="off"><label for="command" class="command-symbol" aria-label="命令">›</label><input id="command" type="text" spellcheck="false" autocapitalize="off" aria-label="输入游戏命令" placeholder="输入 help 查看命令" maxlength="256" disabled><button type="submit" id="submit" disabled>执行 <span>↵</span></button></form><div class="input-hints"><span><kbd>↑</kbd><kbd>↓</kbd> 历史命令 <span class="hint-gap"><kbd>Tab</kbd> 补全</span></span><span>所有行动，皆由命令完成</span></div></div>
+<details id="command-log" class="command-log-panel">
+<summary><span>命令历史</span><span id="command-history-count" class="command-history-count">0 条</span></summary>
+<ol id="command-history-list" class="command-history-list" aria-label="已提交的命令"></ol>
+</details>
+</div>
+<div id="hand" class="hand" hidden></div>
+<div class="command-area"><div class="prompt-line"><span id="prompt">正在连接规则引擎…</span><span id="working" hidden>结算中<span class="dots">…</span></span></div><form id="command-form" autocomplete="off"><label for="command" class="command-symbol" aria-label="命令">›</label><input id="command" type="text" spellcheck="false" autocapitalize="off" aria-label="输入游戏命令" placeholder="输入 help 查看命令" maxlength="256" disabled><button type="submit" id="submit" disabled>执行 <span>↵</span></button></form><div class="input-hints"><span><kbd>↑</kbd><kbd>↓</kbd> 历史命令 <span class="hint-gap"><kbd>Tab</kbd> 补全</span></span><span>点击可直接行动 · 命令框可手动操作</span></div></div>
 </section>
 <aside class="inspector" aria-label="角色和旅程状态">
 <div class="character-heading"><span class="eyebrow">YOUR CHARACTER</span><div class="character-name"><b id="player-name">战士</b><span>IRONCLAD</span></div></div>

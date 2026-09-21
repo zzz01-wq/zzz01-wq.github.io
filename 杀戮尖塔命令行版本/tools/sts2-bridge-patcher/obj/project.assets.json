@@ -8,7 +8,7 @@
     "net10.0": []
   },
   "packageFolders": {
-    "/Users/kamesan/Documents/AI游戏项目/杀戮尖塔命令行版本/.cache/nuget": {}
+    "/Users/kamesan/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
@@ -16,18 +16,18 @@
       "projectUniqueName": "/Users/kamesan/Documents/AI游戏项目/杀戮尖塔命令行版本/tools/sts2-bridge-patcher/PatchSts2Bridges.csproj",
       "projectName": "PatchSts2Bridges",
       "projectPath": "/Users/kamesan/Documents/AI游戏项目/杀戮尖塔命令行版本/tools/sts2-bridge-patcher/PatchSts2Bridges.csproj",
-      "packagesPath": "/Users/kamesan/Documents/AI游戏项目/杀戮尖塔命令行版本/.cache/nuget",
+      "packagesPath": "/Users/kamesan/.nuget/packages/",
       "outputPath": "/Users/kamesan/Documents/AI游戏项目/杀戮尖塔命令行版本/tools/sts2-bridge-patcher/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "/Users/kamesan/Documents/AI游戏项目/杀戮尖塔命令行版本/runtime/NuGet.Config"
+        "/Users/kamesan/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net10.0"
       ],
       "sources": {
-        "/Users/kamesan/Documents/AI游戏项目/杀戮尖塔命令行版本/.tools/godot/Godot_mono.app/Contents/Resources/GodotSharp/Tools/nupkgs": {},
-        "/opt/homebrew/Cellar/dotnet/10.0.102/libexec/library-packs": {}
+        "/opt/homebrew/Cellar/dotnet/10.0.102/libexec/library-packs": {},
+        "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
         "net10.0": {

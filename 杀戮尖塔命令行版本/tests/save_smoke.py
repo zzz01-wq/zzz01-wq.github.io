@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from engine_smoke import DEFAULT_GODOT, GameHost, clear_first_combat, require, sha256
+from engine_smoke import DEFAULT_GODOT, GameHost, clear_first_combat, require, resolve_opening_event, sha256
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,6 +69,7 @@ def main() -> int:
         require(not state.get("hasRunSave"), "Unique save directory unexpectedly contained a run save")
 
         state = first.command(f"new ironclad {args.seed} 0")
+        state = resolve_opening_event(first.command, state)
         route = next((item for item in state.get("routes", []) if item.get("name") == "Monster"), None)
         require(route is not None, "Save smoke seed has no first Monster route")
         state = first.command(f"move {route['index']}")

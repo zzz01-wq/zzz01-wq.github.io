@@ -11,7 +11,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from engine_smoke import DEFAULT_GODOT, GameHost, require, sha256
+from engine_smoke import DEFAULT_GODOT, GameHost, require, resolve_opening_event, sha256
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -107,6 +107,7 @@ def main() -> int:
         require(state.get("phase") == "ready", "Room flow host did not start cleanly")
         state = host.command(f"new ironclad {args.seed} 0")
         require(state.get("player") is not None, "Room flow test could not start an Ironclad run")
+        state = resolve_opening_event(host.command, state)
 
         seen: set[str] = set()
         room_checks: dict[str, dict] = {}
@@ -118,6 +119,26 @@ def main() -> int:
             seen.add(room)
 
             if room == "Shop":
+                merchant_options = state.get("options", [])
+                require(merchant_options and all(option.get("command") == f"buy {option['index']}"
+                                                  for option in merchant_options),
+                        "Merchant snapshot did not expose built-in buy commands for its entries")
+                removal = next((option for option in merchant_options
+                                if option.get("id") == "CARD_REMOVAL" and not option.get("disabled")), None)
+                if removal is not None:
+                    gold_before_cancel = state["player"]["gold"]
+                    state = host.command(f"buy {removal['index']}")
+                    require(state.get("phase") == "choice" and any(action.get("command") == "back"
+                                                                       for action in state.get("actions", [])),
+                            "Merchant card removal did not expose its original cancelable card selector")
+                    state = host.command("back")
+                    require(state.get("phase") == "Shop" and state["player"]["gold"] == gold_before_cancel,
+                            "Canceling merchant card removal should leave the shop and gold unchanged")
+                    require(any(option.get("id") == "CARD_REMOVAL" and not option.get("disabled")
+                                for option in state.get("options", [])),
+                            "Canceled merchant card removal should remain available")
+                    room_checks["Shop_removal_cancel"] = {"gold_before": gold_before_cancel,
+                                                          "gold_after": state["player"]["gold"]}
                 cash = state["player"]["gold"]
                 state = host.command("shop")
                 entries = []
@@ -141,6 +162,9 @@ def main() -> int:
             elif room == "Event" and not state.get("canLeave"):
                 options = [option for option in state.get("options", []) if not option.get("disabled")]
                 require(options, "Original event had no enabled options")
+                require(all(option.get("command") == f"choose {option['index']}"
+                            for option in state.get("options", [])),
+                        "Event snapshot did not expose built-in choose commands")
                 floor = state.get("floor")
                 if floor == 4:
                     state = host.command(f"choose {options[0]['index']}")
@@ -160,6 +184,9 @@ def main() -> int:
                     require(state.get("phase") == "choice" and "2–2" in state.get("prompt", "")
                             and len(state.get("options", [])) == 8,
                             "Second WEBTEST event did not expose its original two-of-eight selection")
+                    require(state.get("selection") == {"min": 2, "max": 2}
+                            and all(option.get("multiSelect") for option in state.get("options", [])),
+                            "Original multi-card choice did not expose its selection range to the UI")
                     state = host.command("choose 1 2")
                     require(state.get("phase") == "Event" and state["player"]["deck"] == before + 2,
                             "Original multi-card event selection did not add exactly the selected cards")
@@ -175,10 +202,32 @@ def main() -> int:
                 options = [option for option in state.get("options", []) if not option.get("disabled")]
                 require(options, "The original rest site exposed no enabled options")
                 before = state["player"]["hp"]
-                state = host.command(f"choose {options[0]['index']}")
+                require(all(option.get("command") == f"choose {option['index']}"
+                            for option in state.get("options", [])),
+                        "Rest-site snapshot did not expose built-in choose commands")
+                smith = next((option for option in options if option.get("id") == "SMITH"), None)
+                require(smith is not None, "Original rest site did not expose its enabled Smith option")
+                state = host.command(f"choose {smith['index']}")
+                require(state.get("phase") == "choice" and "back" in state.get("prompt", ""),
+                        "Smith did not expose its original cancelable card selection")
+                require(any(option.get("command", "").startswith("choose ")
+                            for option in state.get("options", [])),
+                        "Smith card selector did not expose actionable card choices")
+                state = host.command("back")
+                require(state.get("phase") == "RestSite" and not state.get("canLeave"),
+                        "Canceling Smith should return to the rest site without unlocking travel")
+                require(any(option.get("id") == "SMITH" and not option.get("disabled")
+                            for option in state.get("options", [])),
+                        "Canceled Smith option was not retained by the original rest-site synchronizer")
+                heal = next((option for option in state.get("options", [])
+                             if option.get("id") == "HEAL" and not option.get("disabled")), None)
+                require(heal is not None, "Original rest site did not expose its enabled Heal option")
+                state = host.command(f"choose {heal['index']}")
                 require(state.get("canLeave"), "Successful original rest-site choice did not unlock travel")
                 require(state["player"]["hp"] >= before, "Original rest-site action unexpectedly reduced HP")
-                room_checks.setdefault("RestSite", {"hp_before": before, "hp_after": state["player"]["hp"]})
+                room_checks.setdefault("RestSite", {"smith_cancelled": True,
+                                                     "hp_before": before,
+                                                     "hp_after": state["player"]["hp"]})
 
             elif room == "Treasure":
                 gold_before = state["player"]["gold"]
@@ -190,6 +239,11 @@ def main() -> int:
                 require(any("原版宝箱金币奖励" in message for message in state.get("messages", [])),
                         "Treasure-room command did not report the original normal reward")
                 require(state.get("options"), "The original treasure room exposed no relic choices")
+                require(all(option.get("command") == f"choose {option['index']}"
+                            for option in state.get("options", [])),
+                        "Treasure snapshot did not expose built-in relic-pick commands")
+                require(any(action.get("command") == "skip" for action in state.get("actions", [])),
+                        "Treasure snapshot did not expose the original skip-relic command")
                 state = host.command("choose 1")
                 require(len(state["player"]["relics"]) == relic_count + 1,
                         "Original treasure relic pick did not award exactly one relic")

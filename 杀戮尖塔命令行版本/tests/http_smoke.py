@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from engine_smoke import DEFAULT_GODOT, ROOT, require, sha256
+from engine_smoke import DEFAULT_GODOT, ROOT, require, resolve_opening_event, sha256
 
 
 ASSEMBLY = ROOT / "runtime" / ".godot" / "mono" / "temp" / "bin" / "Debug" / "SpireCli.dll"
@@ -87,21 +87,20 @@ def main() -> int:
 
     port = free_port()
     origin = f"http://127.0.0.1:{port}"
-    save_dir = f"res://.cache/spirecli-http-smoke-{time.time_ns()}"
     log_path = ROOT / ".cache" / "http-smoke-server.log"
     args.report.parent.mkdir(parents=True, exist_ok=True)
     report: dict = {
         "started_utc": datetime.now(timezone.utc).isoformat(),
         "seed": args.seed,
-        "save_dir": save_dir,
+        "save_mode": "TestMode in-memory",
         "main_cs_sha256": sha256(ROOT / "runtime" / "Main.cs"),
         "assembly_sha256": sha256(ASSEMBLY),
         "commands": [],
     }
     environment = os.environ.copy()
     environment["DOTNET_ROOT"] = str(dotnet_root)
-    environment["SPIRECLI_SAVE_DIR"] = save_dir
-    environment.pop("SPIRECLI_EPHEMERAL_SAVES", None)
+    environment["SPIRECLI_EPHEMERAL_SAVES"] = "1"
+    environment.pop("SPIRECLI_SAVE_DIR", None)
     server = None
     log_stream = log_path.open("w", encoding="utf-8")
     try:
@@ -152,16 +151,22 @@ def main() -> int:
         def command(value: str) -> dict:
             status, _, snapshot = request(port, "POST", "/api/command", origin=origin, cookie=cookie, command=value)
             require(status == 200 and isinstance(snapshot, dict), f"HTTP command {value!r} failed: {snapshot}")
-            report["commands"].append({"command": value, "phase": snapshot.get("phase"), "prompt": snapshot.get("prompt")})
+            report["commands"].append({
+                "command": value,
+                "phase": snapshot.get("phase"),
+                "prompt": snapshot.get("prompt"),
+                "hasRunSave": snapshot.get("hasRunSave"),
+            })
             return snapshot
 
         state = command("help")
         require(any("new ironclad" in message for message in state.get("messages", [])),
                 "Built-in help command did not return Ironclad start syntax")
         state = command(f"new ironclad {args.seed} 0")
+        state = resolve_opening_event(command, state)
         monster = next((route for route in state.get("routes", []) if route.get("name") == "Monster"), None)
-        require(state.get("phase", "").casefold() == "map" and monster is not None,
-                "HTTP new command did not expose a Monster route")
+        require(state.get("phase") == "Event" and state.get("canLeave") and monster is not None,
+                "HTTP Neow event did not expose the original Monster route")
         state = command(f"move {monster['index']}")
         require(state.get("phase") == "combat" and state.get("hand"), "HTTP move command did not enter combat")
 
@@ -180,7 +185,7 @@ def main() -> int:
 
         report["result"] = "passed"
         report["http_status"] = 200
-        report["phases"] = ["ready", "map", "combat", "combat", "ready"]
+        report["phases"] = ["ready", "Event", "combat", "ready"]
         return 0
     except BaseException as exc:
         report["result"] = "failed"
@@ -200,10 +205,6 @@ def main() -> int:
                 except subprocess.TimeoutExpired:
                     server.kill()
                     server.wait(timeout=3)
-        if save_dir.startswith("res://.cache/spirecli-http-smoke-"):
-            isolated_dir = ROOT / "runtime" / ".cache" / save_dir.rsplit("/", 1)[-1]
-            if isolated_dir.parent.resolve() == (ROOT / "runtime" / ".cache").resolve():
-                shutil.rmtree(isolated_dir, ignore_errors=True)
         log_stream.close()
         report["finished_utc"] = datetime.now(timezone.utc).isoformat()
         args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

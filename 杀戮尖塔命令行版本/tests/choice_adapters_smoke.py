@@ -11,7 +11,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from engine_smoke import DEFAULT_GODOT, GameHost, require, sha256
+from engine_smoke import DEFAULT_GODOT, GameHost, require, resolve_opening_event, sha256
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,6 +63,7 @@ def main() -> int:
         require(state.get("phase") == "ready", "Choice test host did not start cleanly")
         state = host.command("new ironclad CHOICEFLOW 0")
         require(state.get("player") is not None, "Choice test host could not start an Ironclad run")
+        state = resolve_opening_event(host.command, state)
         before = {key: state["player"][key] for key in ("hp", "gold", "deck")}
 
         state = host.command("__test_select multi")

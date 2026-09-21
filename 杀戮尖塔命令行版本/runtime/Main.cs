@@ -1,5 +1,6 @@
 using Godot;
 using MegaCrit.Sts2.Core.Helpers;
+using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using MegaCrit.Sts2.Core.TestSupport;
@@ -11,10 +12,12 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Entities.TreasureRelicPicking;
 using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.Entities.CardRewardAlternatives;
 using MegaCrit.Sts2.Core.Entities.Merchant;
+using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -28,6 +31,8 @@ using MegaCrit.Sts2.Core.Unlocks;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Logging;
+using MegaCrit.Sts2.Core.Timeline;
+using MegaCrit.Sts2.Core.Timeline.Epochs;
 
 public partial class Main : Node, ICardSelector
 {
@@ -38,10 +43,12 @@ public partial class Main : Node, ICardSelector
     private readonly List<Task> background = [];
     private readonly Queue<PendingChoice> pendingChoices = new();
     private readonly Stack<(RewardsSet set, TaskCompletionSource done)> rewardStack = new();
+    private bool referencePackMounted;
     private CardReward? rewardCard;
     private TaskCompletionSource? rewardStageChoice;
     private bool rewardSelectionPending;
     private int rewardSelectionIndex;
+    private bool cardSelectionCancelable;
     private bool restDone, treasureOpened, treasurePicking, treasureDone, gameWon;
     private bool treasureAwardHandlerAttached;
     private string seed = "";
@@ -115,6 +122,17 @@ public partial class Main : Node, ICardSelector
 
     public override void _ExitTree() => ChoiceAdapters.Detach(this);
 
+    private void MountReferencePack()
+    {
+        if(referencePackMounted) return;
+        string packPath=System.Environment.GetEnvironmentVariable("SPIRECLI_GAME_PCK")??
+            Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"),"..","reference","SlayTheSpire2.pck"));
+        if(!File.Exists(packPath)) throw new FileNotFoundException("找不到原版游戏资源包。可设置 SPIRECLI_GAME_PCK 指向提供的 SlayTheSpire2.pck。",packPath);
+        if(!ProjectSettings.LoadResourcePack(packPath,replaceFiles:false))
+            throw new InvalidOperationException("Godot 无法挂载提供的原版 SlayTheSpire2.pck。");
+        referencePackMounted=true;
+    }
+
     private void Track(Task task) => background.Add(task);
     private void Start(Task task) { operation = task; }
     private async Task Settle()
@@ -135,7 +153,13 @@ public partial class Main : Node, ICardSelector
         string[] a = input.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (a.Length == 0) return;
         string cmd = a[0].ToLowerInvariant();
-        if (cmd is "help" or "帮助") { Say(Help); return; }
+        if (cmd is "help" or "帮助")
+        {
+            Say(TestHooksEnabled
+                ? Help + "\n测试模式（SPIRECLI_ENABLE_TEST_HOOKS=1）：__test_kill [敌人编号|all]（无参数时击杀全部存活敌人）"
+                : Help);
+            return;
+        }
         if (cmd is "status" or "状态" or "look") { Describe(); return; }
         if (cmd == "clear") return;
         if (cmd == "new")
@@ -181,6 +205,18 @@ public partial class Main : Node, ICardSelector
         if (cmd.StartsWith("__test_",StringComparison.Ordinal))
         {
             if(!TestHooksEnabled) throw new CommandError("未知命令。输入 help 查看命令。");
+            if(cmd=="__test_kill")
+            {
+                if(a.Length>2) throw new CommandError("用法：__test_kill [敌人编号|all]");
+                if(Busy||Choosing) throw new CommandError("当前有原版动作或选择待处理，不能执行测试击杀。");
+                if(!Playing||run.CurrentRoom is not CombatRoom) throw new CommandError("测试击杀只能在玩家出牌阶段的战斗中使用。");
+                var aliveEnemies=Enemies;
+                if(aliveEnemies.Count==0) throw new CommandError("当前战斗没有存活的敌人。");
+                List<Creature> targets;
+                if(a.Length==1||a[1].Equals("all",StringComparison.OrdinalIgnoreCase)) targets=aliveEnemies;
+                else targets=[aliveEnemies[Index(a,1,aliveEnemies.Count)]];
+                Start(TestKillEnemies(targets)); return;
+            }
             if(cmd=="__test_select")
             {
                 if(a.Length!=2) throw new CommandError("测试入口用法错误。");
@@ -189,6 +225,17 @@ public partial class Main : Node, ICardSelector
             if(cmd=="__test_nested") { if(a.Length!=1) throw new CommandError("测试入口用法错误。"); Start(TestNestedCards()); return; }
             if(cmd=="__test_bundle") { if(a.Length!=1) throw new CommandError("测试入口用法错误。"); Start(TestBundleChoice()); return; }
             if(cmd=="__test_relic") { if(a.Length!=1) throw new CommandError("测试入口用法错误。"); Start(TestRelicChoice()); return; }
+            if(cmd=="__test_enter_act")
+            {
+                if(a.Length!=2||!int.TryParse(a[1],out int actNumber)||actNumber<2||actNumber>run!.Acts.Count)
+                    throw new CommandError("测试入口用法：__test_enter_act 幕编号（2–3）。");
+                Start(TestEnterAct(actNumber-1)); return;
+            }
+            if(cmd=="__test_assert_ancient")
+            {
+                if(a.Length!=1) throw new CommandError("测试入口用法错误。");
+                AssertCurrentActAncient(); return;
+            }
             throw new CommandError("未知命令。输入 help 查看命令。");
         }
         if (failed || Dead || gameWon) throw new CommandError("旅程已结束。输入 new ironclad 开始下一次。");
@@ -298,6 +345,7 @@ public partial class Main : Node, ICardSelector
             case "move":
                 if(!CanLeave()) throw new CommandError("请先完成当前房间的战斗或选择。");
                 var next=NextPoints(); var point=next[Index(a,1,next.Count)];
+                if(point.PointType is MapPointType.Ancient or MapPointType.Unknown) MountReferencePack();
                 restDone=false;treasureOpened=false;treasurePicking=false;treasureDone=false;
                 Start(Enqueue(new VoteForMapCoordAction(player,run.MapLocation,new MapVote {coord=point.coord,mapGenerationCount=RM.MapSelectionSynchronizer.MapGenerationCount}))); break;
             case "proceed":
@@ -343,20 +391,65 @@ public partial class Main : Node, ICardSelector
     {
         ResetRunState();
         seed=chosenSeed;
+        // The terminal skips the original Timeline UI; use its normal Neow-ready standard profile.
+        if(!SaveManager.Instance.IsEpochRevealed<NeowEpoch>())
+        {
+            SaveManager.Instance.ObtainEpochOverride(EpochModel.GetId<NeowEpoch>(),EpochState.Revealed);
+            SaveManager.Instance.SaveProgressFile();
+        }
         var unlocks=SaveManager.Instance.GenerateUnlockStateFromProgress();
         int maxAscension=SaveManager.Instance.Progress.GetOrCreateCharacterStats(ModelDb.Character<Ironclad>().Id).MaxAscension;
         int acceptedAscension=Math.Min(asc,maxAscension);
         if(acceptedAscension!=asc) Say($"原版角色选择会将进阶限制为已解锁的 {acceptedAscension}。" );
         asc=acceptedAscension;
         player=Player.CreateForNewRun<Ironclad>(unlocks,1);
-        // Same seed stream as StartRunLobby; default profile keeps original unlock restrictions.
+        // Same seed stream as StartRunLobby; other profile unlock restrictions remain in effect.
         var acts=ActModel.GetRandomList(new Rng((uint)StringHelper.GetDeterministicHashCode(seed), "act_selection"),unlocks,false).Select(a=>a.ToMutable()).ToArray();
         run=RunState.CreateForNewRun([player],acts,[],GameMode.Standard,asc,seed);
         RM.SetUpNewSingleplayer(run,true);
+        if(run.ExtraFields.StartedWithNeow) MountReferencePack();
         AttachTreasureAwardHandler();
         await RM.FinalizeStartingRelics();RM.Launch();
         await RM.EnterAct(0,doTransition:false);
         Say($"战士 · 种子 {seed} · 进阶 {asc}\n{Text(run.Act.Title)}，旅程开始。");
+    }
+
+    private async Task TestEnterAct(int actIndex)
+    {
+        if(Busy||Choosing||CM.IsInProgress||!CanLeave()) throw new CommandError("请在当前房间已完成且没有待处理动作时运行此测试入口。");
+        await RM.EnterAct(actIndex,doTransition:false);
+        if(run==null||run.CurrentActIndex!=actIndex||run.CurrentRoom is not MapRoom)
+            throw new InvalidOperationException("原版 EnterAct 未将后续幕放在地图房间。");
+        if(run.Map.StartingMapPoint.PointType!=MapPointType.Ancient)
+            throw new InvalidOperationException("原版后续幕地图起点不是 Ancient。");
+        var startPoints=NextPoints();
+        if(startPoints.Count!=1||startPoints[0].coord!=run.Map.StartingMapPoint.coord)
+            throw new InvalidOperationException("终端没有将后续幕 Ancient 起点暴露为唯一首条路线。");
+        Say($"测试断言通过：第 {actIndex+1} 幕地图开放 Ancient 起点，请用 move 1 进入。");
+    }
+
+    private async Task TestKillEnemies(IReadOnlyList<Creature> targets)
+    {
+        var killedNames=new List<string>();
+        foreach(var enemy in targets)
+        {
+            if(!enemy.IsAlive) continue;
+            killedNames.Add(enemy.Name);
+            await CreatureCmd.Kill(enemy,force:true);
+        }
+        if(CM.IsInProgress) await CM.CheckWinCondition();
+        if(killedNames.Count==0) Say("测试击杀没有找到仍存活的目标。");
+        else Say($"测试击杀：{string.Join("、",killedNames)}。已调用原版死亡处理并检查战斗结束条件。");
+    }
+
+    private void AssertCurrentActAncient()
+    {
+        if(run?.CurrentRoom is not EventRoom eventRoom
+            || eventRoom.LocalMutableEvent is not AncientEventModel ancient
+            || !ancient.Id.Equals(run.Act.Ancient.Id))
+            throw new InvalidOperationException("当前事件与原版本幕预生成 Ancient 不一致。");
+        string selection = run.CurrentActIndex == 0 ? "固定" : "随机预选";
+        Say($"测试断言通过：已进入本幕{selection} Ancient {ancient.Id.Entry}。");
     }
 
     private async Task ContinueSavedRun()
@@ -368,6 +461,8 @@ public partial class Main : Node, ICardSelector
         run=restored;
         player=restored.Players.FirstOrDefault()??throw new CommandError("存档中没有玩家。");
         seed=restored.Rng.StringSeed;
+        if(restored.CurrentRoom is EventRoom||restored.CurrentMapPoint?.PointType is MapPointType.Ancient or MapPointType.Unknown)
+            MountReferencePack();
         await RM.SetUpSavedSingleplayer(restored,loaded.SaveData);
         AttachTreasureAwardHandler();
         RM.Launch();
@@ -391,6 +486,7 @@ public partial class Main : Node, ICardSelector
         rewardStageChoice=null;
         rewardSelectionPending=false;
         rewardSelectionIndex=0;
+        cardSelectionCancelable=false;
         while(rewardStack.TryPop(out var pendingReward)) pendingReward.done.TrySetCanceled();
         if(operation!=null) ObserveFault(operation);
         foreach(var task in background) ObserveFault(task);
@@ -430,7 +526,11 @@ public partial class Main : Node, ICardSelector
     }
     private async Task TakeReward(Reward reward)
     {
-        bool ok=await RM.RewardsSetSynchronizer.SelectLocalReward(reward);
+        bool previousCancelable=cardSelectionCancelable;
+        cardSelectionCancelable=reward is CardRemovalReward;
+        bool ok;
+        try { ok=await RM.RewardsSetSynchronizer.SelectLocalReward(reward); }
+        finally { cardSelectionCancelable=previousCancelable; }
         if(!ok) Say("未领取该奖励，请检查药水槽等条件。");
         CompleteRewardSet();
     }
@@ -440,7 +540,15 @@ public partial class Main : Node, ICardSelector
     }
     private async Task ChooseRest(int idx)
     {
-        if(await RM.RestSiteSynchronizer.ChooseLocalOption(idx)) restDone=true;
+        if(run?.CurrentRoom is not RestSiteRoom restSite||idx<0||idx>=restSite.Options.Count)
+            throw new CommandError("休息处选项已变化，请重新查看当前状态。");
+        bool previousCancelable=cardSelectionCancelable;
+        cardSelectionCancelable=restSite.Options[idx] is SmithRestSiteOption or CookRestSiteOption;
+        try
+        {
+            if(await RM.RestSiteSynchronizer.ChooseLocalOption(idx)) restDone=true;
+        }
+        finally { cardSelectionCancelable=previousCancelable; }
     }
 
     private async Task OpenTreasure(TreasureRoom room)
@@ -488,7 +596,11 @@ public partial class Main : Node, ICardSelector
 
     private async Task Buy(MerchantEntry e,MerchantInventory i)
     {
-        bool success=await e.OnTryPurchaseWrapper(i);
+        bool previousCancelable=cardSelectionCancelable;
+        cardSelectionCancelable=e is MerchantCardRemovalEntry;
+        bool success;
+        try { success=await e.OnTryPurchaseWrapper(i); }
+        finally { cardSelectionCancelable=previousCancelable; }
         if(success&&e is MerchantCardRemovalEntry removal) removal.SetUsed();
         Say(success?"购买完成。":"未完成购买。");
     }
@@ -504,7 +616,7 @@ public partial class Main : Node, ICardSelector
         }
         if(minSelect<0||maxSelect<minSelect||minSelect>cards.Count)
             throw new ArgumentOutOfRangeException(nameof(minSelect),$"原版选择范围 {minSelect}–{maxSelect} 与 {cards.Count} 张候选牌不匹配。");
-        var choice=new CardListChoice(cards,minSelect,Math.Min(maxSelect,cards.Count));
+        var choice=new CardListChoice(cards,minSelect,Math.Min(maxSelect,cards.Count),cardSelectionCancelable);
         pendingChoices.Enqueue(choice);
         return choice.Completion.Task;
     }
@@ -557,6 +669,12 @@ public partial class Main : Node, ICardSelector
     {
         if(choice is CardListChoice cards)
         {
+            if(cmd=="back"&&cards.Cancelable)
+            {
+                pendingChoices.Dequeue();
+                cards.Completion.TrySetResult(Array.Empty<CardModel>());
+                return;
+            }
             if(cmd=="skip"&&cards.MinSelect==0)
             {
                 pendingChoices.Dequeue();
@@ -592,7 +710,7 @@ public partial class Main : Node, ICardSelector
 
     private static string ChoicePrompt(PendingChoice choice)=>choice switch
     {
-        CardListChoice cards=>$"原版效果要求选择 {cards.MinSelect}–{cards.MaxSelect} 张牌：choose 编号"+(cards.MaxSelect>1?"（多个编号以空格分隔）":"")+(cards.MinSelect==0?"；也可 skip":""),
+        CardListChoice cards=>$"原版效果要求选择 {cards.MinSelect}–{cards.MaxSelect} 张牌：choose 编号"+(cards.MaxSelect>1?"（多个编号以空格分隔）":"")+(cards.MinSelect==0?"；也可 skip":"")+(cards.Cancelable?"；back 取消当前选牌":""),
         BundleChoice=>"请选择一个原版卡牌组合：choose 编号",
         RelicListChoice=>"请选择一个原版遗物：choose 编号",
         _=>"需要先完成当前原版选择。"
@@ -701,7 +819,67 @@ public partial class Main : Node, ICardSelector
     {
         if(s==null) return "";
         try { return Clean(s.GetFormattedText()); }
-        catch(Exception) { return Clean(s.GetRawText()); }
+        catch(Exception)
+        {
+            try { return Clean(s.GetRawText()); }
+            catch(Exception) { return $"[原版文本未提供：{s.LocTable}.{s.LocEntryKey}]"; }
+        }
+    }
+    private static string PowerDescription(PowerModel power)
+    {
+        try
+        {
+            var tip=power.HoverTips.OfType<HoverTip>().FirstOrDefault();
+            if(!string.IsNullOrWhiteSpace(tip.Description)) return Clean(tip.Description);
+        }
+        catch(Exception) { }
+        try { return Clean(power.GetDumbHoverTip().Description); }
+        catch(Exception) { return Text(power.Description); }
+    }
+    private static object[] PowerViews(Creature creature) => creature.Powers.Select(power=>new
+    {
+        name=Text(power.Title),
+        type=power.Type.ToString(),
+        description=PowerDescription(power)
+    }).ToArray();
+    private sealed record EnemyIntentView(string type,string label,string title,string description,bool hasIntentTip);
+    private EnemyIntentView[] EnemyIntentViews(Creature enemy)
+    {
+        var monster=enemy.Monster;
+        if(player==null||monster==null)return [];
+        Creature[] targets=[player.Creature];
+        return monster.NextMove.Intents.Select(intent=>
+        {
+            string label=Text(intent.GetIntentLabel(targets,enemy));
+            string title="",description="";
+            if(intent.HasIntentTip)
+            {
+                try
+                {
+                    var tip=intent.GetHoverTip(targets,enemy);
+                    title=Clean(tip.Title??"");
+                    description=Clean(tip.Description);
+                }
+                catch(Exception)
+                {
+                    // Intent tooltips are optional display details; keep the label if an asset or localization is unavailable.
+                }
+            }
+            return new EnemyIntentView(intent.IntentType.ToString(),label,title,description,intent.HasIntentTip);
+        }).ToArray();
+    }
+    private static string EventDescription(EventModel eventModel)
+    {
+        // Match NEventRoom.SetDescription: missing optional localization is not rendered.
+        var description=eventModel.Description??new LocString("events","ERROR.description");
+        if(!description.Exists()) return "";
+        if(eventModel.Owner is { } owner)
+        {
+            owner.Character.AddDetailsTo(description);
+            description.Add("IsMultiplayer",owner.RunState.Players.Count>1);
+            eventModel.DynamicVars.AddTo(description);
+        }
+        return Text(description);
     }
     private string CardText(CardModel c)=>$"{c.Title} · {c.EnergyCost.GetWithModifiers(CostModifiers.All)} 能量 · {Clean(c.GetDescriptionForPile(c.Pile?.Type??PileType.None))}";
     private void ShowCards(IReadOnlyList<CardModel> cards) {if(cards.Count==0)Say("空");for(int i=0;i<cards.Count;i++)Say($"{i+1}. {CardText(cards[i])}");}
@@ -724,8 +902,20 @@ public partial class Main : Node, ICardSelector
         Say($"第 {run.CurrentActIndex+1} 幕 · {Text(run.Act.Title)} · 第 {run.TotalFloor} 层");
         foreach(var row in run.Map.GetAllMapPoints().GroupBy(p=>p.coord.row).OrderByDescending(g=>g.Key))
             Say($"{row.Key,2} │ "+string.Join("  ",row.OrderBy(p=>p.coord.col).Select(p=>$"{p.coord.col}:{p.PointType}"+(p.coord==run.CurrentMapCoord?" ←":""))));
-        var next=NextPoints(); for(int i=0;i<next.Count;i++)Say($"move {i+1} → {next[i].PointType} ({next[i].coord.col},{next[i].coord.row})");
-        if(next.Count==0&&run.CurrentRoom is CombatRoom {RoomType:RoomType.Boss})Say("输入 proceed 继续。");
+        var next=NextPoints();
+        bool canLeave=CanLeave();
+        if(next.Count>0)
+        {
+            if(canLeave)
+                for(int i=0;i<next.Count;i++)Say($"move {i+1} → {next[i].PointType} ({next[i].coord.col},{next[i].coord.row})");
+            else
+            {
+                Say("当前房间尚未完成；以下仅为路线预览，暂不能 move。");
+                for(int i=0;i<next.Count;i++)Say($"路线 {i+1} → {next[i].PointType} ({next[i].coord.col},{next[i].coord.row})");
+            }
+        }
+        if(next.Count==0&&run.CurrentRoom is CombatRoom {RoomType:RoomType.Boss})
+            Say(canLeave?"输入 proceed 继续。":"首领房间尚未完成结算，暂不能 proceed。");
     }
     private void ShowShop()
     {
@@ -750,54 +940,143 @@ public partial class Main : Node, ICardSelector
         if(Won)return "胜利 · new ironclad 开始下一次旅程";
         if(Dead)return "你倒下了。new ironclad 开始下一次旅程";
         if(CurrentChoice is { } choice)return ChoicePrompt(choice);
-        if(rewardCard!=null)return rewardStageChoice==null?"选择卡牌奖励：choose 编号（包含原版替代选项） / skip / back":"原版奖励效果正在等待后续选择：choose 编号 / skip";
-        if(Rewards!=null)return "战利品：take 编号 / skip";
+        if(rewardCard is { } cardReward)
+        {
+            bool canSkip=CardRewardAlternative.Generate(cardReward).Any(alternative=>alternative.OptionId.Equals("Skip",StringComparison.OrdinalIgnoreCase));
+            string skipText=canSkip?" / skip 跳过":"";
+            return rewardStageChoice==null?"选择卡牌奖励：choose 编号（包含原版替代选项）"+skipText+" / back 返回奖励列表":"原版奖励效果正在等待后续选择：choose 编号"+skipText;
+        }
+        if(Rewards is { } rewardSet)return rewardSet.DisallowSkipping?"战利品：take 编号领取（本组不可跳过）":"战利品：take 编号 / skip 跳过剩余奖励";
         if(Playing)return "play 手牌编号 敌人编号 · end 结束回合";
-        if(run?.CurrentRoom is EventRoom e)return e.LocalMutableEvent.IsFinished?"proceed 继续 · map 查看路线":"choose 编号选择事件选项 · map 查看路线";
+        if(run?.CurrentRoom is EventRoom e)
+        {
+            var eventModel=e.LocalMutableEvent;
+            if(CanLeave())return "事件已完成：move 编号前进 · map 查看路线";
+            if(CM.IsInProgress)return "事件内战斗尚未结束，请先完成战斗 · status 查看状态";
+            if(Busy||Choosing)return "事件效果仍在结算，请稍候 · status 查看状态";
+            if(eventModel.IsFinished)return "事件已结束，但原版规则暂不允许离开 · status 查看状态";
+            return eventModel.CurrentOptions.Count==0?"事件正在结算，请稍候 · status 查看状态":"choose 编号处理事件选项 · map 预览路线";
+        }
         if(run?.CurrentRoom is RestSiteRoom restSite)
-            return restSite.Options.Count>0?"choose 编号选择休息处行动；proceed 或 move 离开":"proceed 或 move 离开休息处";
+        {
+            if(!restDone)return restSite.Options.Any(option=>option.IsEnabled)?"休息处：choose 编号使用行动；成功后可离开":"休息处当前没有可用行动。";
+            return restSite.Options.Any(option=>option.IsEnabled)?"已完成一项休息处行动；可 choose 编号继续，或 move 编号离开":"休息处行动已完成：move 编号离开 · proceed 查看路线";
+        }
         if(run?.CurrentRoom is TreasureRoom)
-            return !treasureOpened?"open 开箱并领取原版金币和附加奖励":!treasureDone?"choose 编号领取遗物 / skip":"move 编号前进 · proceed 查看路线";
-        if(run?.CurrentRoom is MerchantRoom)return "shop 查看商店 · buy 编号购买 · move 编号前进";
+            return !treasureOpened?"open 开箱并领取原版金币和附加奖励":!treasureDone?"choose 编号领取遗物 · skip 跳过遗物":"move 编号前进 · proceed 查看路线";
+        if(run?.CurrentRoom is MerchantRoom)return "buy 编号购买商品 · move 编号离开 · shop 在日志查看清单";
         return run==null?(SaveManager.Instance.HasRunSave?"continue 恢复存档 · abandon 删除存档":"new ironclad 开始旅程"):"map 查看路线 · move 编号前进";
     }
-    private object CardView(CardModel c,int i)=>new {index=i+1,id=c.Id.Entry,name=c.Title,cost=c.EnergyCost.GetWithModifiers(CostModifiers.All),description=Clean(c.GetDescriptionForPile(c.Pile?.Type??PileType.None)),type=c.Type.ToString(),targetType=c.TargetType.ToString()};
+    private object CardView(CardModel c,int i,string? command=null,bool multiSelect=false)=>new {index=i+1,id=c.Id.Entry,name=c.Title,cost=c.EnergyCost.GetWithModifiers(CostModifiers.All),description=Clean(c.GetDescriptionForPile(c.Pile?.Type??PileType.None)),type=c.Type.ToString(),targetType=c.TargetType.ToString(),command,multiSelect};
     private object[] RewardCardOptions(CardReward reward)
     {
         List<CardModel> cards=reward.Cards.ToList();
-        var cardOptions=cards.Select((card,index)=>(object)CardView(card,index));
+        var cardOptions=cards.Select((card,index)=>(object)CardView(card,index,$"choose {index+1}"));
         var alternativeOptions=CardRewardAlternative.Generate(reward).Select((alternative,index)=>(object)new
         {
             index=cards.Count+index+1,
             name=Text(alternative.Title),
             description=Text(alternative.Title),
-            kind="alternative"
+            kind="alternative",
+            command=$"choose {cards.Count+index+1}"
         });
         return cardOptions.Concat(alternativeOptions).ToArray();
+    }
+    private object[] ChoiceActions()
+    {
+        List<object> actions=[];
+        if(CurrentChoice is CardListChoice cards)
+        {
+            if(cards.MinSelect==0)actions.Add(new {label="不选牌",command="skip"});
+            if(cards.Cancelable)actions.Add(new {label="取消选牌",command="back"});
+        }
+        else if(rewardCard is { } cardReward)
+        {
+            if(CardRewardAlternative.Generate(cardReward).Any(alternative=>alternative.OptionId.Equals("Skip",StringComparison.OrdinalIgnoreCase)))
+                actions.Add(new {label="跳过奖励",command="skip"});
+            if(rewardStageChoice==null)actions.Add(new {label="返回奖励列表",command="back"});
+        }
+        else if(Rewards is { DisallowSkipping:false })actions.Add(new {label="跳过剩余奖励",command="skip"});
+        else if(run?.CurrentRoom is TreasureRoom&&treasureOpened&&!treasurePicking&&!treasureDone&&RM.TreasureRoomRelicSynchronizer.CurrentRelics!=null)
+            actions.Add(new {label="跳过遗物",command="skip"});
+        return actions.ToArray();
     }
     private object[] Options()
     {
         if(CurrentChoice is { } choice)return choice.Views(this);
         if(rewardCard!=null)return RewardCardOptions(rewardCard);
-        if(Rewards!=null)return Rewards.Rewards.Where(r=>!r.SuccessfullySelected).Select((r,i)=>(object)new {index=i+1,name=Text(r.Description),description="take "+(i+1)}).ToArray();
-        if(run?.CurrentRoom is EventRoom e)return e.LocalMutableEvent.CurrentOptions.Select((o,i)=>(object)new {index=i+1,name=Text(o.Title),description=Text(o.Description),disabled=o.IsLocked}).ToArray();
-        if(run?.CurrentRoom is RestSiteRoom r)return r.Options.Select((o,i)=>(object)new {index=i+1,name=Text(o.Title),description=Text(o.Description),disabled=!o.IsEnabled}).ToArray();
-        if(run?.CurrentRoom is TreasureRoom&&treasureOpened&&!treasureDone)return RM.TreasureRoomRelicSynchronizer.CurrentRelics?.Select((o,i)=>(object)new {index=i+1,name=Text(o.Title),description=Text(o.DynamicDescription)}).ToArray()??[];
+        if(Rewards!=null)return Rewards.Rewards.Where(r=>!r.SuccessfullySelected).Select((r,i)=>(object)new {index=i+1,name=Text(r.Description),description="",command="take "+(i+1)}).ToArray();
+        if(run?.CurrentRoom is EventRoom e)return e.LocalMutableEvent.CurrentOptions.Select((o,i)=>(object)new {index=i+1,name=Text(o.Title),description=Text(o.Description),disabled=o.IsLocked,command="choose "+(i+1)}).ToArray();
+        if(run?.CurrentRoom is RestSiteRoom r)return r.Options.Select((o,i)=>(object)new {index=i+1,id=o.OptionId,name=Text(o.Title),description=Text(o.Description),disabled=!o.IsEnabled,command="choose "+(i+1)}).ToArray();
+        if(run?.CurrentRoom is TreasureRoom&&treasureOpened&&!treasureDone)return RM.TreasureRoomRelicSynchronizer.CurrentRelics?.Select((o,i)=>(object)new {index=i+1,name=Text(o.Title),description=Text(o.DynamicDescription),command="choose "+(i+1)}).ToArray()??[];
+        if(run?.CurrentRoom is MerchantRoom merchant)
+        {
+            MerchantInventory inventory=merchant.GetLocalInventory();
+            RefreshHeadlessMerchantInventory(inventory);
+            return inventory.AllEntries.Select((entry,index)=>
+            {
+                bool stocked=entry.IsStocked;
+                bool enoughGold=entry.EnoughGold;
+                return (object)new {index=index+1,id=entry is MerchantCardRemovalEntry?"CARD_REMOVAL":entry.GetType().Name,name=EntryName(entry),description=EntryDescription(entry),cost=entry.Cost,costLabel="金币",disabled=!stocked||!enoughGold,type=!stocked?"已售罄":!enoughGold?"金币不足":"",command="buy "+(index+1)};
+            }).ToArray();
+        }
         return [];
+    }
+    private static string EntryDescription(MerchantEntry entry)=>entry switch
+    {
+        MerchantCardEntry card when card.CreationResult?.Card is { } model=>Clean(model.GetDescriptionForPile(PileType.None)),
+        MerchantRelicEntry relic when relic.Model is { } model=>Text(model.DynamicDescription),
+        MerchantPotionEntry potion when potion.Model is { } model=>Text(model.DynamicDescription),
+        _=>""
+    };
+    private object? MapView()
+    {
+        if(run==null)return null;
+        var nextPoints=NextPoints();
+        var routeIndexes=new Dictionary<MapCoord,int>();
+        for(int i=0;i<nextPoints.Count;i++)routeIndexes[nextPoints[i].coord]=i+1;
+        IEnumerable<MapPoint> sourcePoints=run.Map.GetAllMapPoints()
+            .Append(run.Map.StartingMapPoint)
+            .Append(run.Map.BossMapPoint);
+        if(run.Map.SecondBossMapPoint is { } secondBoss)sourcePoints=sourcePoints.Append(secondBoss);
+        var points=sourcePoints.GroupBy(p=>p.coord).Select(g=>g.First())
+            .OrderBy(p=>p.coord.row).ThenBy(p=>p.coord.col).ToArray();
+        var visited=run.VisitedMapCoords.ToHashSet();
+        var current=run.CurrentMapCoord;
+        return new {
+            act=run.CurrentActIndex+1,
+            current=current.HasValue?new {col=current.Value.col,row=current.Value.row}:null,
+            visitedPath=run.VisitedMapCoords.Select(c=>new {col=c.col,row=c.row}).ToArray(),
+            points=points.Select(p=>new {
+                col=p.coord.col,row=p.coord.row,type=p.PointType.ToString(),
+                current=current.HasValue&&p.coord==current.Value,
+                visited=visited.Contains(p.coord),
+                start=p.coord==run.Map.StartingMapPoint.coord,
+                boss=p.coord==run.Map.BossMapPoint.coord||(run.Map.SecondBossMapPoint is { } second&&p.coord==second.coord),
+                routeIndex=routeIndexes.TryGetValue(p.coord,out int routeIndex)?routeIndex:0,
+                children=p.Children.OrderBy(c=>c.coord.row).ThenBy(c=>c.coord.col)
+                    .Select(c=>new {col=c.coord.col,row=c.coord.row}).ToArray()
+            }).ToArray()
+        };
     }
     private void Publish()
     {
         try
         {
             var pcs=player?.PlayerCombatState;
+            var enemyViews=Enemies.Select((e,i)=>
+            {
+                var intents=EnemyIntentViews(e);
+                return new {index=i+1,name=e.Name,hp=e.CurrentHp,maxHp=e.MaxHp,block=e.Block,powers=e.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(),powerDetails=PowerViews(e),intent=string.Join(" · ",intents.Select(intent=>intent.label)),intents};
+            }).ToArray();
             var snapshot=new {
                 prompt=Prompt(),messages=messages.ToArray(),phase=failed?"error":Won?"victory":Dead?"defeat":Choosing?"choice":Playing?"combat":run?.CurrentRoom?.RoomType.ToString()??"ready",engineMode=TestMode.IsOn?"TestMode/headless":"normal",hasRunSave=SaveManager.Instance.HasRunSave,
                 seed,act=run==null?0:run.CurrentActIndex+1,floor=run?.TotalFloor??0,location=run==null?"旅程尚未开始":Text(run.Act.Title),
                 player=player==null?null:new {name="战士",hp=player.Creature.CurrentHp,maxHp=player.Creature.MaxHp,block=player.Creature.Block,gold=player.Gold,energy=pcs?.Energy??0,maxEnergy=pcs?.MaxEnergy??player.MaxEnergy,turn=pcs?.TurnNumber??0,deck=player.Deck.Cards.Count,draw=pcs?.DrawPile.Cards.Count??0,discard=pcs?.DiscardPile.Cards.Count??0,exhaust=pcs?.ExhaustPile.Cards.Count??0,powers=player.Creature.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(),relics=player.Relics.Select(r=>new{name=Text(r.Title),description=Text(r.DynamicDescription)}).ToArray(),potions=player.PotionSlots.Select(p=>p==null?"空槽":Text(p.Title)).ToArray()},
-                hand=pcs?.Hand.Cards.Select(CardView).ToArray()??[],
-                enemies=Enemies.Select((e,i)=>new{index=i+1,name=e.Name,hp=e.CurrentHp,maxHp=e.MaxHp,block=e.Block,powers=e.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(),intent=string.Join(" · ",e.Monster!.NextMove.Intents.Select(it=>Text(it.GetIntentLabel([player!.Creature],e))))}).ToArray(),
-                options=Options(),eventText=run?.CurrentRoom is EventRoom er?Text(er.LocalMutableEvent.Description):"",
-                routes=run==null?[]:NextPoints().Select((p,i)=>new{index=i+1,name=p.PointType.ToString(),col=p.coord.col,row=p.coord.row}).ToArray(),canLeave=CanLeave(),busy=Busy&&!Choosing
+                hand=pcs?.Hand.Cards.Select((card,index)=>CardView(card,index)).ToArray()??[],
+                enemies=enemyViews,
+                options=Options(),actions=ChoiceActions(),selection=CurrentChoice is CardListChoice cardSelection?new {min=cardSelection.MinSelect,max=cardSelection.MaxSelect}:null,eventText=run?.CurrentRoom is EventRoom er?EventDescription(er.LocalMutableEvent):"",
+                routes=run==null?[]:NextPoints().Select((p,i)=>new{index=i+1,name=p.PointType.ToString(),col=p.coord.col,row=p.coord.row}).ToArray(),map=MapView(),canLeave=CanLeave(),busy=Busy&&!Choosing
             };
             System.Console.WriteLine("@@SPIRE@@"+JsonSerializer.Serialize(snapshot));
         }
@@ -814,13 +1093,14 @@ public partial class Main : Node, ICardSelector
         public abstract void Cancel();
     }
 
-    private sealed class CardListChoice(List<CardModel> options,int minSelect,int maxSelect):PendingChoice
+    private sealed class CardListChoice(List<CardModel> options,int minSelect,int maxSelect,bool cancelable):PendingChoice
     {
         public List<CardModel> Options {get;}=options;
         public int MinSelect {get;}=minSelect;
         public int MaxSelect {get;}=maxSelect;
+        public bool Cancelable {get;}=cancelable;
         public TaskCompletionSource<IEnumerable<CardModel>> Completion {get;}=new();
-        public override object[] Views(Main owner)=>Options.Select(owner.CardView).ToArray();
+        public override object[] Views(Main owner)=>Options.Select((card,index)=>owner.CardView(card,index,$"choose {index+1}",MaxSelect>1)).ToArray();
         public override void Cancel()=>Completion.TrySetCanceled();
     }
 
@@ -833,7 +1113,8 @@ public partial class Main : Node, ICardSelector
         {
             index=index+1,
             name=$"组合 {index+1}",
-            description=string.Join(" · ",bundle.Select(card=>$"{card.Title} [{card.Id.Entry}]"))
+            description=string.Join(" · ",bundle.Select(card=>$"{card.Title} [{card.Id.Entry}]")),
+            command=$"choose {index+1}"
         }).ToArray();
         public override void Cancel()=>Completion.TrySetCanceled();
     }
@@ -846,7 +1127,8 @@ public partial class Main : Node, ICardSelector
         {
             index=index+1,
             name=Text(relic.Title),
-            description=Text(relic.DynamicDescription)
+            description=Text(relic.DynamicDescription),
+            command=$"choose {index+1}"
         }).ToArray();
         public override void Cancel()=>Completion.TrySetCanceled();
     }
@@ -858,7 +1140,7 @@ public partial class Main : Node, ICardSelector
 出牌      play 手牌编号 敌人编号（需指定目标的牌；例：play 1 2）
 结束回合  end
 选择      choose 编号（多选时可跟多个编号）
-奖励      take 编号 / skip / back
+奖励      take 编号 / skip / back（back 返回奖励列表或取消原版可取消的选牌）
 地图      map / move 路线编号 / proceed
 商店      shop / buy 商品编号
 药水      potion 槽位 敌人编号（需指定目标的药水）/ discard-potion 槽位
