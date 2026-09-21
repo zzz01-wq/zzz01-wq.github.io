@@ -1,0 +1,10 @@
+reference/
+.cache/
+.tools/
+runtime/.godot/
+runtime/lib/
+runtime/localization/
+__pycache__/
+*.pyc
+.DS_Store
+saves/

@@ -1,0 +1,10 @@
+config_version=5
+[application]
+config/name="Spire CLI"
+run/main_scene="res://Main.tscn"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="spire-command-game"
+[dotnet]
+project/assembly_name="SpireCli"
+[rendering]
+renderer/rendering_method="gl_compatibility"

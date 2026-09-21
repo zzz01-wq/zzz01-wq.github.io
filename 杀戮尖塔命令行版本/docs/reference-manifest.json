@@ -1,0 +1,16 @@
+{
+  "requested_build": "23811903",
+  "build_verified": false,
+  "note": "Build 由用户指定；文件哈希标识输入，不等于已核验 Steam Build。",
+  "godot_version": [
+    4,
+    5,
+    1
+  ],
+  "entries": 15658,
+  "localization_files": 93,
+  "files": {
+    "SlayTheSpire2.pck": "42520eb8b0911c6c0f0bd102d92b33f41abd4d26b83489817d0a6dbd7dd48587",
+    "sts2.dll": "a1f9e653f1e28e4076558fee1e60d218619cb7e057b887c6417f62c62c6d7a52"
+  }
+}
