@@ -29,7 +29,14 @@
 - 原版 `RunManager.SetStartedWithNeowFlag()` 只在 `NeowEpoch` 已揭示时标记 Neow 开局；否则第一幕地图起点改为 Monster。原版 `ProgressSaveManager.UpdateEpochsPostRun()` 会在一局结束后取得 Neow，随后由 Timeline 流程显示/揭示该 Epoch。这是原版全新空白进度与已完成时间线解锁后的差别。
 - 命令终端跳过原版 Timeline UI，也不读取 Steam 进度。按本项目的标准开局要求，`runtime/Main.cs` 在 `new ironclad` 前用原版 `SaveManager` API 将终端自己的 NeowEpoch 标记为 Revealed，再由原版 `RunManager.EnterAct(0)` 自动进入固定 Neow。它是宿主的进度初始化策略，不表示原版空白首档也必定从 Neow 开始。
 - 后两幕的 `EnterAct()` 先进入地图房间；终端用 `move 1` 进入 Ancient，再用 `choose 编号` 处理已由原版 RNG 预选的事件。执行证据见 `.cache/act-opening-smoke.json` 和 `docs/engine-coverage.md`。
+- 原版 `.cache/source/MegaCrit.Sts2.Core.Models/ActModel.cs` 的 `GetRandomList()` 按 `ModelDb.ActsByIndex` 的幕编号建立标准旅程；本构建的标准列表为 3 幕。`.cache/source/MegaCrit.Sts2.Core.Runs/RunManager.cs` 的 `EnterNextAct()` 在当前幕不是最后一幕时调用 `EnterAct(CurrentActIndex + 1)`，后者进入下一幕地图；只有最后一幕才进入 `TheArchitect` 终局事件。终端 Boss 结算后调用同一 `EnterNextAct()`，不是网页层自造路线。
 - 原版 `NEventRoom.SetDescription()` 仅在说明 `LocString.Exists()` 时设置说明控件；缺少该 key 时原版界面留空。提供的 `zhs/ancients.json` 与 `eng/ancients.json` 均没有 `NEOW.pages.INITIAL.description`。终端快照沿用此行为；方括号形式的“原版文本未提供”是宿主原先对缺失 key 的诊断格式，不是原版剧情文本。
+
+## 本机原版事件选项动态文本依据
+
+- `.cache/source/MegaCrit.Sts2.Core.Models.Events/Wellspring.cs` 的 `CanonicalVars` 明确定义 `new DynamicVar("BatheCurses", 1m)`；`Bathe()` 使用 `base.DynamicVars["BatheCurses"].IntValue` 调用原版 `AddGuilty()`，因此“沐浴”会移除 1 张牌并添加 1 张愧疚。
+- `.cache/source/MegaCrit.Sts2.Core.Events/EventOption.cs` 的 `AddLocVars()` 注入角色详情和 `IsMultiplayer`；`.cache/source/MegaCrit.Sts2.Core.Nodes.Events/NEventOptionButton.cs` 在显示前调用 `Event.DynamicVars.AddTo(Option.Description)` 与 `AddTo(Option.Title)`。事件选项的 `{Damage}`、`{BatheCurses}` 等占位符必须经过这条原版动态变量链路，不能在网页层硬编码。
+- `runtime/Main.cs` 的 `EventOptionText()` 现在按该显示路径注入原版事件变量后再格式化选项标题和说明。固定 `WEBTEST` 房间流程已确认“仔细翻找”显示为“失去14点生命，获得天选芝士。”，不再显示 `{Damage}` 占位符。
 
 ## 本机原版怪物状态文本依据
 
@@ -37,6 +44,14 @@
 - PowerType 定义将状态分类为 Buff 与 Debuff；终端只据此标注增益/减益类别，不自行推断持续时间。
 - `.cache/extracted/localization/zhs/powers.json` 提供本机提取的中文 Power 文本。例如 `VULNERABLE_POWER.smartDescription` 把 `Amount` 写为回合数，`STRENGTH_POWER.smartDescription` 将 `Amount` 写为攻击伤害变化。终端通过原版 `PowerModel.HoverTips` 格式化显示，不把其他 Power 的 `Amount` 一概解释成回合。
 - `runtime/Main.cs` 将原版标题、`PowerType` 和已格式化说明写入状态快照；网页仅负责排版。缺少动态说明的个别 Power 仍以原版 `Description` 回退，其运行时覆盖需要另行验证。
+
+## 本机原版 Boss 战信息依据
+
+- `.cache/source/MegaCrit.Sts2.Core.Rooms/CombatRoom.cs` 将房间的 `RoomType` 直接映射到 `Encounter.RoomType`，并公开该房间的 `CombatState`、`Encounter` 和 `Enemies`。
+- `.cache/source/MegaCrit.Sts2.Core.Combat/CombatManager.cs` 的 `DebugOnlyGetState()` 返回当前原版 `CombatState`；`SetUpCombat()` 将房间内已生成的 Creature 加入同一状态，`StartCombatInternal()` 在原版战斗开始时设置 `IsInProgress`。
+- `.cache/source/MegaCrit.Sts2.Core.Models/EncounterModel.cs` 的 `Title` 是原版 `encounters` 本地化标题；Boss 房间的名称来自该标题和战斗状态中的 Monster `Creature.Name`，不是网页层自造名称。
+- `runtime/Main.cs` 在战斗期间优先读取上述原版 CombatManager 敌人集合；网页只显示快照的 Boss 标记、原版遭遇标题和敌人状态，不替换原版 Boss 行为或数值。验证报告为 `.cache/boss-display-smoke.json`。
+- `.cache/boss-transition-smoke.json` 使用固定种子 `BOSSFLOW` 和测试专用原版死亡入口完成第一幕 Boss 结算，确认网页暴露 `proceed` 后调用原版 `EnterNextAct()`，状态从第 1 幕 Boss 切换到第 2 幕地图，并提供唯一 Ancient 起点。该测试验证的是转幕与入口，不是用测试击杀证明战斗伤害规则。
 
 ## 本机原版测试击杀流程依据
 
@@ -47,6 +62,7 @@
 ## 本机原版房间选项与可取消选牌依据
 
 - `.cache/source/MegaCrit.Sts2.Core.Entities.RestSite/RestSiteOption.cs` 的 `Generate()` 建立本地选项并调用 `Hook.ModifyRestSiteOptions()`；选项可用性来自各自的 `IsEnabled`。
+- `.cache/source/MegaCrit.Sts2.Core.Rooms/RestSiteRoom.cs` 在进入房间时同步调用 `RestSiteSynchronizer.BeginRestSite()`，再由 `RestSiteRoom.Options` 暴露原版行动；终端快照的 `restState` 记录选项数量、可用数量和本次适配器是否已经成功完成一项行动。
 - `.cache/source/MegaCrit.Sts2.Core.Multiplayer.Game/RestSiteSynchronizer.cs` 的 `ChooseOption()` 只有在 `OnSelect()` 返回成功时才记录休息选择并移除已选项或清空剩余项；取消选牌会返回 `false`，原选项继续保留。`.cache/source/MegaCrit.Sts2.Core.Entities.RestSite/SmithRestSiteOption.cs` 和 `CookRestSiteOption.cs` 都将原版 `CardSelectorPrefs.Cancelable` 及 `RequireManualConfirmation` 设为 `true`，空选牌时返回 `false`。
 - `.cache/source/MegaCrit.Sts2.Core.Entities.Merchant/MerchantCardRemovalEntry.cs` 将 `cancelable:true` 传给 `OneOffSynchronizer.DoLocalMerchantCardRemoval()`；`.cache/source/MegaCrit.Sts2.Core.Multiplayer.Game/OneOffSynchronizer.cs` 的原版选牌偏好允许取消，并且仅当返回了卡牌后才扣金币并移除卡牌。`.cache/source/MegaCrit.Sts2.Core.Rewards/CardRemovalReward.cs` 调用 `RewardSynchronizer.DoUnsyncedCardRemoval()`；该同步器也设为可取消，只有选到卡牌才移除。
 - `runtime/Main.cs` 只在这些原版可取消的休息处/商店/移除奖励选牌上下文中接受 `back`，并向原版 selector 返回空选择；其它强制选牌仍拒绝 `back`。`tests/room_flow_smoke.py` 用固定种子实测取消铁匠和商店移除后房间选项保留、可继续旅程且金币未减少。
@@ -57,6 +73,8 @@
 
 - `.cache/source/MegaCrit.Sts2.Core.Models/EventModel.cs` 的 `SetEventState()` 在当前选项列表为空时将事件标记为已完成；此状态变更可以发生在事件选项回调执行期间。
 - `.cache/source/MegaCrit.Sts2.Core.Multiplayer.Game/EventSynchronizer.cs` 将 `EventOption.Chosen()` 加入待处理任务；`AwaitPendingOptionTasks()` 等这些任务结束。`.cache/source/MegaCrit.Sts2.Core.Rooms/EventRoom.cs` 在退出事件房间前也会等待待处理选项任务。
+- `.cache/source/MegaCrit.Sts2.Core.Rooms/EventRoom.cs` 的 `EnterInternal()` 调用 `EventSynchronizer.BeginEvent()`，而 `.cache/source/MegaCrit.Sts2.Core.Multiplayer.Game/EventSynchronizer.cs` 的该方法对每个可变事件使用 `TaskHelper.RunSafely(eventModel.BeginEvent(...))`，不会等待 `BeginEvent()` 返回；原版 UI 依靠 `StateChanged` 后续刷新。桥接层的 `Settle()` 现在等待一个尚未完成且选项仍为空的 `EventModel` 完成初始化，并在快照中暴露 `eventState.initialized/finished/optionCount`，防止空选项瞬间被网页误当成可离房状态。
+- `.cache/source/MegaCrit.Sts2.Core.Odds/UnknownMapPointOdds.cs` 的 `Roll()` 规定：当 `UnlockState.NumberOfRuns == 0` 时，前两个 Unknown 点直接返回 `RoomType.Event`，第三个直接返回 `RoomType.Monster`；之后 Unknown 会按原版动态概率在事件、普通战、宝箱和商店等房间中抽取。因此地图上的 `?` 本身不保证每次都是事件；若快照的 `phase` 不是 `Event/EventRoom`，那是原版随机房间结果，不是事件被跳过。
 - 终端的事件路线提示和文字地图按 `CanLeave()` 判断是否可移动；该判断同时检查房间结束状态、原版动作结算、待处理选择、战斗状态和 `Hook.ShouldProceedToNextMapPoint()`。事件动作仍在结算时只显示路线预览。
 
 ## 已锁定的版本

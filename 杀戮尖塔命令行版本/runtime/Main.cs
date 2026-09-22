@@ -56,7 +56,18 @@ public partial class Main : Node, ICardSelector
     private bool TestHooksEnabled => System.Environment.GetEnvironmentVariable("SPIRECLI_ENABLE_TEST_HOOKS") == "1";
     private static RunManager RM => RunManager.Instance;
     private static CombatManager CM => CombatManager.Instance;
-    private List<Creature> Enemies => player?.Creature.CombatState?.Enemies.Where(e => e.IsAlive).ToList() ?? [];
+    private List<Creature> Enemies
+    {
+        get
+        {
+            // During room entry the original CombatManager owns the authoritative
+            // state before the local Player reference is fully repopulated. This is
+            // especially visible for Boss rooms, whose first snapshot can otherwise
+            // contain no enemies even though the original combat has started.
+            ICombatState? combatState = CM.DebugOnlyGetState() ?? player?.Creature.CombatState;
+            return combatState?.Enemies.Where(e => e is not null && e.IsAlive).ToList() ?? [];
+        }
+    }
     private RewardsSet? Rewards => rewardStack.TryPeek(out var x) ? x.set : null;
     private bool Playing => CM.IsInProgress && player?.PlayerCombatState?.Phase == PlayerTurnPhase.Play;
     private bool Busy => operation is { IsCompleted: false } || background.Any(t => !t.IsCompleted) || EngineBusy;
@@ -143,10 +154,24 @@ public partial class Main : Node, ICardSelector
             if (operation?.IsFaulted == true) await operation;
             foreach (var task in background.Where(t => t.IsFaulted).ToArray()) await task;
             background.RemoveAll(t => t.IsCompleted);
+            // EventRoom.EnterInternal starts the original EventSynchronizer.BeginEvent
+            // task without awaiting it. Do not publish a room snapshot while that
+            // task still owns an empty, unfinished EventModel; the web client would
+            // otherwise see no choices and could reopen the map over the event.
+            if (EventInitializationPending()) continue;
             if (Choosing || (!Busy && !EngineBusy && (!CM.IsInProgress || Playing || Dead))) return;
         }
         throw new CommandError("仍在结算。输入 status 获取状态；不要重复上一条操作。");
     }
+
+    private static bool EventInitializationPending(EventRoom eventRoom)
+    {
+        EventModel eventModel=eventRoom.LocalMutableEvent;
+        return !eventModel.IsFinished && eventModel.CurrentOptions.Count==0;
+    }
+
+    private bool EventInitializationPending()
+        => run?.CurrentRoom is EventRoom eventRoom && EventInitializationPending(eventRoom);
 
     private async Task Dispatch(string input)
     {
@@ -800,7 +825,7 @@ public partial class Main : Node, ICardSelector
     {
         if(run==null||Busy||Choosing||CM.IsInProgress||Dead||!Hook.ShouldProceedToNextMapPoint(run)) return false;
         if(run.CurrentRoom is MapRoom) return NextPoints().Count>0;
-        return run.CurrentRoom switch {CombatRoom c=>c.IsPreFinished, EventRoom e=>e.LocalMutableEvent.IsFinished,RestSiteRoom=>restDone,TreasureRoom=>treasureDone,_=>true};
+        return run.CurrentRoom switch {CombatRoom c=>c.IsPreFinished, EventRoom e=>!EventInitializationPending(e)&&e.LocalMutableEvent.IsFinished,RestSiteRoom=>restDone,TreasureRoom=>treasureDone,_=>true};
     }
     private List<MapPoint> NextPoints()
     {
@@ -848,11 +873,18 @@ public partial class Main : Node, ICardSelector
         var monster=enemy.Monster;
         if(player==null||monster==null)return [];
         Creature[] targets=[player.Creature];
-        return monster.NextMove.Intents.Select(intent=>
+        var views=new List<EnemyIntentView>();
+        foreach(var intent in monster.NextMove.Intents)
         {
-            string label=Text(intent.GetIntentLabel(targets,enemy));
+            if(intent==null)continue;
+            string label="";
+            try { label=Text(intent.GetIntentLabel(targets,enemy)); }
+            catch(Exception) { }
             string title="",description="";
-            if(intent.HasIntentTip)
+            bool hasIntentTip=false;
+            try { hasIntentTip=intent.HasIntentTip; }
+            catch(Exception) { }
+            if(hasIntentTip)
             {
                 try
                 {
@@ -865,8 +897,12 @@ public partial class Main : Node, ICardSelector
                     // Intent tooltips are optional display details; keep the label if an asset or localization is unavailable.
                 }
             }
-            return new EnemyIntentView(intent.IntentType.ToString(),label,title,description,intent.HasIntentTip);
-        }).ToArray();
+            string type="Unknown";
+            try { type=intent.IntentType.ToString(); }
+            catch(Exception) { }
+            views.Add(new EnemyIntentView(type,label,title,description,hasIntentTip));
+        }
+        return views.ToArray();
     }
     private static string EventDescription(EventModel eventModel)
     {
@@ -880,6 +916,27 @@ public partial class Main : Node, ICardSelector
             eventModel.DynamicVars.AddTo(description);
         }
         return Text(description);
+    }
+    private static object EventState(EventRoom eventRoom)
+    {
+        EventModel eventModel=eventRoom.LocalMutableEvent;
+        int optionCount=eventModel.CurrentOptions.Count;
+        return new {initialized=eventModel.IsFinished||optionCount>0,finished=eventModel.IsFinished,optionCount};
+    }
+    private object RestState(RestSiteRoom restSite)
+    {
+        var options=restSite.Options;
+        return new {initialized=options.Count>0,actionCompleted=restDone,optionCount=options.Count,enabledCount=options.Count(option=>option.IsEnabled)};
+    }
+    private static string EventOptionText(EventModel eventModel, LocString? text)
+    {
+        if(text==null) return "";
+        // EventOption's constructor already adds owner details and
+        // IsMultiplayer to its description. Match NEventOptionButton._Ready
+        // here by adding the event's current dynamic variables to both title
+        // and description before formatting them.
+        eventModel.DynamicVars.AddTo(text);
+        return Text(text);
     }
     private string CardText(CardModel c)=>$"{c.Title} · {c.EnergyCost.GetWithModifiers(CostModifiers.All)} 能量 · {Clean(c.GetDescriptionForPile(c.Pile?.Type??PileType.None))}";
     private void ShowCards(IReadOnlyList<CardModel> cards) {if(cards.Count==0)Say("空");for(int i=0;i<cards.Count;i++)Say($"{i+1}. {CardText(cards[i])}");}
@@ -951,12 +1008,17 @@ public partial class Main : Node, ICardSelector
         if(run?.CurrentRoom is EventRoom e)
         {
             var eventModel=e.LocalMutableEvent;
+            if(EventInitializationPending(e))return "事件正在初始化，请稍候 · status 查看状态";
             if(CanLeave())return "事件已完成：move 编号前进 · map 查看路线";
             if(CM.IsInProgress)return "事件内战斗尚未结束，请先完成战斗 · status 查看状态";
             if(Busy||Choosing)return "事件效果仍在结算，请稍候 · status 查看状态";
             if(eventModel.IsFinished)return "事件已结束，但原版规则暂不允许离开 · status 查看状态";
             return eventModel.CurrentOptions.Count==0?"事件正在结算，请稍候 · status 查看状态":"choose 编号处理事件选项 · map 预览路线";
         }
+        if(run?.CurrentRoom is CombatRoom { RoomType:RoomType.Boss } && NextPoints().Count==0)
+            return CanLeave()
+                ? (run.CurrentActIndex>=run.Acts.Count-1?"proceed 进入终局事件":"proceed 进入下一幕")
+                : "首领战奖励或结算尚未完成，请先处理完当前选择";
         if(run?.CurrentRoom is RestSiteRoom restSite)
         {
             if(!restDone)return restSite.Options.Any(option=>option.IsEnabled)?"休息处：choose 编号使用行动；成功后可离开":"休息处当前没有可用行动。";
@@ -999,6 +1061,8 @@ public partial class Main : Node, ICardSelector
         else if(Rewards is { DisallowSkipping:false })actions.Add(new {label="跳过剩余奖励",command="skip"});
         else if(run?.CurrentRoom is TreasureRoom&&treasureOpened&&!treasurePicking&&!treasureDone&&RM.TreasureRoomRelicSynchronizer.CurrentRelics!=null)
             actions.Add(new {label="跳过遗物",command="skip"});
+        else if(run?.CurrentRoom is CombatRoom { RoomType:RoomType.Boss } && NextPoints().Count==0 && CanLeave())
+            actions.Add(new {label=run.CurrentActIndex>=run.Acts.Count-1?"进入终局事件":"进入下一幕",command="proceed"});
         return actions.ToArray();
     }
     private object[] Options()
@@ -1006,8 +1070,9 @@ public partial class Main : Node, ICardSelector
         if(CurrentChoice is { } choice)return choice.Views(this);
         if(rewardCard!=null)return RewardCardOptions(rewardCard);
         if(Rewards!=null)return Rewards.Rewards.Where(r=>!r.SuccessfullySelected).Select((r,i)=>(object)new {index=i+1,name=Text(r.Description),description="",command="take "+(i+1)}).ToArray();
-        if(run?.CurrentRoom is EventRoom e)return e.LocalMutableEvent.CurrentOptions.Select((o,i)=>(object)new {index=i+1,name=Text(o.Title),description=Text(o.Description),disabled=o.IsLocked,command="choose "+(i+1)}).ToArray();
+        if(run?.CurrentRoom is EventRoom e)return e.LocalMutableEvent.CurrentOptions.Select((o,i)=>(object)new {index=i+1,name=EventOptionText(e.LocalMutableEvent,o.Title),description=EventOptionText(e.LocalMutableEvent,o.Description),disabled=o.IsLocked,command="choose "+(i+1)}).ToArray();
         if(run?.CurrentRoom is RestSiteRoom r)return r.Options.Select((o,i)=>(object)new {index=i+1,id=o.OptionId,name=Text(o.Title),description=Text(o.Description),disabled=!o.IsEnabled,command="choose "+(i+1)}).ToArray();
+        if(run?.CurrentRoom is TreasureRoom&&!treasureOpened)return [new {index=1,name="开启宝箱",description="",command="open"}];
         if(run?.CurrentRoom is TreasureRoom&&treasureOpened&&!treasureDone)return RM.TreasureRoomRelicSynchronizer.CurrentRelics?.Select((o,i)=>(object)new {index=i+1,name=Text(o.Title),description=Text(o.DynamicDescription),command="choose "+(i+1)}).ToArray()??[];
         if(run?.CurrentRoom is MerchantRoom merchant)
         {
@@ -1059,23 +1124,46 @@ public partial class Main : Node, ICardSelector
             }).ToArray()
         };
     }
+    private object? CombatView()
+    {
+        if(run?.CurrentRoom is not CombatRoom room || (!CM.IsInProgress && !CM.IsStarting)) return null;
+        return new
+        {
+            type=room.RoomType.ToString(),
+            isBoss=room.RoomType==RoomType.Boss,
+            name=Text(room.Encounter.Title)
+        };
+    }
     private void Publish()
     {
         try
         {
             var pcs=player?.PlayerCombatState;
-            var enemyViews=Enemies.Select((e,i)=>
+            IReadOnlyList<Creature> activeEnemies=CM.IsInProgress||CM.IsStarting?Enemies:Array.Empty<Creature>();
+            var enemyViews=activeEnemies.Select((e,i)=>
             {
-                var intents=EnemyIntentViews(e);
-                return new {index=i+1,name=e.Name,hp=e.CurrentHp,maxHp=e.MaxHp,block=e.Block,powers=e.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(),powerDetails=PowerViews(e),intent=string.Join(" · ",intents.Select(intent=>intent.label)),intents};
+                EnemyIntentView[] intents=[];
+                try { intents=EnemyIntentViews(e); }
+                catch(Exception) { }
+                string name="敌人";
+                try { name=e.Name; }
+                catch(Exception) { }
+                string[] powers=[];
+                try { powers=e.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(); }
+                catch(Exception) { }
+                object[] powerDetails=[];
+                try { powerDetails=PowerViews(e); }
+                catch(Exception) { }
+                return new {index=i+1,name,hp=e.CurrentHp,maxHp=e.MaxHp,block=e.Block,powers,powerDetails,intent=string.Join(" · ",intents.Select(intent=>intent.label)),intents};
             }).ToArray();
             var snapshot=new {
                 prompt=Prompt(),messages=messages.ToArray(),phase=failed?"error":Won?"victory":Dead?"defeat":Choosing?"choice":Playing?"combat":run?.CurrentRoom?.RoomType.ToString()??"ready",engineMode=TestMode.IsOn?"TestMode/headless":"normal",hasRunSave=SaveManager.Instance.HasRunSave,
-                seed,act=run==null?0:run.CurrentActIndex+1,floor=run?.TotalFloor??0,location=run==null?"旅程尚未开始":Text(run.Act.Title),
+                seed,act=run==null?0:run.CurrentActIndex+1,actCount=run?.Acts.Count??0,floor=run?.TotalFloor??0,location=run==null?"旅程尚未开始":Text(run.Act.Title),
                 player=player==null?null:new {name="战士",hp=player.Creature.CurrentHp,maxHp=player.Creature.MaxHp,block=player.Creature.Block,gold=player.Gold,energy=pcs?.Energy??0,maxEnergy=pcs?.MaxEnergy??player.MaxEnergy,turn=pcs?.TurnNumber??0,deck=player.Deck.Cards.Count,draw=pcs?.DrawPile.Cards.Count??0,discard=pcs?.DiscardPile.Cards.Count??0,exhaust=pcs?.ExhaustPile.Cards.Count??0,powers=player.Creature.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(),relics=player.Relics.Select(r=>new{name=Text(r.Title),description=Text(r.DynamicDescription)}).ToArray(),potions=player.PotionSlots.Select(p=>p==null?"空槽":Text(p.Title)).ToArray()},
                 hand=pcs?.Hand.Cards.Select((card,index)=>CardView(card,index)).ToArray()??[],
+                combat=CombatView(),
                 enemies=enemyViews,
-                options=Options(),actions=ChoiceActions(),selection=CurrentChoice is CardListChoice cardSelection?new {min=cardSelection.MinSelect,max=cardSelection.MaxSelect}:null,eventText=run?.CurrentRoom is EventRoom er?EventDescription(er.LocalMutableEvent):"",
+                options=Options(),actions=ChoiceActions(),selection=CurrentChoice is CardListChoice cardSelection?new {min=cardSelection.MinSelect,max=cardSelection.MaxSelect}:null,eventText=run?.CurrentRoom is EventRoom er?EventDescription(er.LocalMutableEvent):"",eventState=run?.CurrentRoom is EventRoom eventRoom?EventState(eventRoom):null,restState=run?.CurrentRoom is RestSiteRoom restSite?RestState(restSite):null,
                 routes=run==null?[]:NextPoints().Select((p,i)=>new{index=i+1,name=p.PointType.ToString(),col=p.coord.col,row=p.coord.row}).ToArray(),map=MapView(),canLeave=CanLeave(),busy=Busy&&!Choosing
             };
             System.Console.WriteLine("@@SPIRE@@"+JsonSerializer.Serialize(snapshot));

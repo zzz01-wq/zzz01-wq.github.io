@@ -13,6 +13,7 @@
 .scroll-area{flex:1 1 auto;min-height:0}
 .encounter{max-height:32dvh;overflow-y:auto;margin:10px 0 0;padding:8px 0 12px;border-bottom:1px solid var(--line);scrollbar-width:thin;scrollbar-color:#494138 transparent}
 .encounter .section-label{margin-bottom:8px}
+.boss-title{margin:-2px 0 8px;padding-left:10px;border-left:2px solid #bd6855;color:#efb28d;font-size:16px;letter-spacing:1px}
 .enemies{gap:6px 14px}
 .enemy{min-width:min(230px,calc(50% - 8px));padding:3px 10px 6px}
 .enemy-name{font-size:15px}
@@ -66,7 +67,8 @@ body.map-is-open{overflow:hidden}
 .map-node-mark{fill:#e2d8c8;font:11px var(--sans);pointer-events:none}
 .map-route-badge{fill:#d49a71;stroke:#181614;stroke-width:1.5;vector-effect:non-scaling-stroke}
 .map-route-number{fill:#171311;font:9px var(--mono);font-weight:700;pointer-events:none}
-.map-ink-stroke{fill:none;stroke:#edac8f;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;opacity:.82;pointer-events:stroke;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 2px #211914)}
+.map-ink-stroke{fill:none;stroke:#edac8f;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;opacity:.82;pointer-events:none;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 2px #211914)}
+.map-canvas[data-tool="erase"] .map-ink-stroke{pointer-events:stroke}
 .map-footer{display:flex;flex:0 0 auto;align-items:flex-start;justify-content:space-between;gap:16px;margin-top:12px}
 .map-legend{display:flex;flex:1 1 55%;flex-wrap:wrap;align-items:center;gap:7px 15px;color:var(--muted);font-size:12px}
 .map-legend-item{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
@@ -104,10 +106,10 @@ body.map-is-open{overflow:hidden}
   .map-note{font-size:10px}
 }
 
-/* Keep submitted commands in their own independently scrollable log. */
-.terminal-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(190px,clamp(190px,22vw,270px));gap:20px;flex:1 1 auto;min-height:0}
+/* Command history is kept in sessionStorage for now; give the main view the full width. */
+.terminal-body{display:grid;grid-template-columns:minmax(0,1fr);gap:0;flex:1 1 auto;min-height:0}
 .terminal-body>.scroll-area{height:100%;min-width:0;min-height:0;flex:initial}
-.command-log-panel{display:flex;flex-direction:column;min-width:0;min-height:0;max-height:100%;margin:24px 0 20px;padding-left:15px;border-left:1px solid var(--line);overflow:hidden}
+.command-log-panel{display:none!important}
 .command-log-panel>summary{display:flex;flex:0 0 auto;align-items:center;justify-content:space-between;gap:10px;list-style:none;cursor:pointer;color:var(--muted);font-size:13px;letter-spacing:1px;user-select:none}
 .command-log-panel>summary::-webkit-details-marker{display:none}
 .command-log-panel>summary::after{content:"⌄";color:var(--dim);font:12px var(--mono)}
@@ -130,7 +132,7 @@ body.map-is-open{overflow:hidden}
 .power-detail.buff .power-name{color:#bdc497}
 .power-detail.status .power-name{color:#d0b99a}
 @media(max-width:1000px){
-  .terminal-body{grid-template-columns:minmax(0,1fr) minmax(165px,clamp(165px,23vw,220px));gap:13px}
+  .terminal-body{grid-template-columns:minmax(0,1fr);gap:0}
   .command-log-panel{padding-left:11px}
   .power-detail{grid-template-columns:minmax(75px,max-content) minmax(0,1fr);gap:6px;font-size:11px}
 }

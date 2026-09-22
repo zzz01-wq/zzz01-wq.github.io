@@ -24,7 +24,7 @@
 
 ## 3. 当前状态：务必区分代码与验证
 
-下表由 2026-09-21 本轮执行结果更新。细节、原版依据和边界以 `docs/engine-coverage.md` 为准。
+下表由 2026-09-22 本轮执行结果更新。细节、原版依据和边界以 `docs/engine-coverage.md` 为准。
 
 | 模块 | 已落地 | 本轮验证与剩余缺口 |
 | --- | --- | --- |
@@ -32,12 +32,12 @@
 | Godot 托管宿主 | `runtime/Main.cs`、Godot 场景与 `runtime/ChoiceAdapters.cs` | 最新重编译通过，0 warning、0 error；headless/TestMode 行为仍有差异 |
 | 战士战斗 | 原版 ActionQueue、出牌、回合、战斗奖励 | `engine_smoke` 通过；固定首战和少量卡牌，不代表全卡池 |
 | 选择交互 | 单选/多选/可跳过/嵌套、原版卡牌组合和遗物桥 | 隔离的 choice adapter smoke 通过；真实遭遇仍需扩大 |
-| 房间流程 | 地图、各幕 Ancient/Neow、事件、商店、休息、宝箱和奖励命令 | 最新 room-flow 实测商店移除取消、铁匠取消后继续休息、事件多选、宝箱选择；固定幕首验证仍见 `.cache/act-opening-smoke.json`；精英、Boss、全部事件分支仍未覆盖 |
+| 房间流程 | 地图、各幕 Ancient/Neow、事件、商店、休息、宝箱和奖励命令 | 最新 room-flow 实测商店移除取消、铁匠取消后继续休息、事件多选、宝箱选择；`boss_transition_smoke` 验证第一幕 Boss 结算后进入第二幕；固定幕首验证仍见 `.cache/act-opening-smoke.json`；精英、全部 Boss、全部事件分支和终局仍未覆盖 |
 | TestMode | 快照标记 `TestMode/headless`；关键章节/教程与选择差异已核对并记录 | 还没有逐项审计所有 `TestMode` 分支，也没有普通图形模式对照 |
 | 存档 | 原版自动写入 `SerializableRun`；`continue`、`abandon` | 独立 Godot 进程之间恢复奖励检查点通过；生产默认 `user://terminal-save`，测试使用仓库内隔离路径 |
 | Python HTTP 桥 | Cookie 会话、HTTP 命令、静态网页 | 本轮 HTTP smoke 经本机回环通过，验证 Neow 开局、进入战斗、出牌、回合和放弃；并发、错误边界和崩溃恢复未覆盖 |
 | 网页 | 自有命令框、日志与状态视图、全屏路线图和本地手绘层、`/api/command` 绑定 | HTTP 命令已验证；Chrome 临时内存会话中目视检查过地图路线和编号。战斗布局未在战斗快照下目视验收，IME/移动端仍待检查 |
-| 自动化测试 | `tests/engine_smoke.py`、`choice_adapters_smoke.py`、`room_flow_smoke.py`、`save_smoke.py`、`act_opening_smoke.py`、`http_smoke.py` | 最近交互补丁后重跑 engine、choice、room-flow、HTTP smoke 均通过；save 与 act-opening 未随本次补丁重跑；覆盖范围仍有限，不能据此声称 1:1 |
+| 自动化测试 | `tests/engine_smoke.py`、`choice_adapters_smoke.py`、`room_flow_smoke.py`、`save_smoke.py`、`act_opening_smoke.py`、`boss_transition_smoke.py`、`http_smoke.py` | 本轮重跑 engine、choice、room-flow、save、act-opening 和 Boss 转幕 smoke 均通过；覆盖范围仍有限，不能据此声称 1:1 |
 | README / 准备工具 | 原版提取脚本与运行依赖暂存 | README 和一键准备/构建入口仍待补 |
 
 本轮重编译命令 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 通过，0 warning、0 error。HTTP smoke 使用本机临时回环端口并在结束时关闭服务，没有保留常驻网页服务。
@@ -48,7 +48,7 @@
 
 本轮更新：命令回显从主规则消息区移入独立滚动历史栏；点击历史项只填入命令框，不会自动执行，小屏幕默认折叠。怪物 Power 状态现在通过原版 PowerModel.HoverTips 格式化标题、增益/减益类别与动态描述，因此易伤显示原版回合说明，力量显示原版数值效果。最新 dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers 通过，0 warning、0 error；node --check web/app.js 与 git diff --check 通过。桌面 Chrome 预览中经网页内置命令框提交只读 help，截图确认命令显示于独立历史栏、help 回答显示在主消息区。runtime/Main.cs / Godot Mono assembly SHA-256 为 85b743274bfe7094676a66b3e58c60ccb69bd2a75db3278f3c8249becaccd622 / 54a7cf410ce3d30d25be85f59a66f9286d0ff552c0e83835b1551045066536b5。未跑测试；未验证历史项点击回填、真实战斗 Power 快照或窄屏布局。
 
-本轮新增仅测试钩子可用的 `__test_kill [敌人编号|all]`，无参数默认击杀全部存活敌人。它在玩家出牌阶段调用原版 `CreatureCmd.Kill(force: true)` 并继续调用 `CombatManager.CheckWinCondition()`，以便测试敌人死亡后的房间、奖励流程；它跳过伤害、格挡和 `ShouldDie`，不覆盖战斗伤害规则。设置 `SPIRECLI_ENABLE_TEST_HOOKS=1` 启动 `server.py` 后，网页终端 `help` 会列出此命令。`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 通过，0 warning、0 error；`runtime/Main.cs` / Godot Mono assembly SHA-256 为 `f6943e6145bbd06a91aed751a61f931e2d12e722bda9ed16aa2be533fe4a04a2` / `a3ac97557bb626822f117ee7bb1af8abe0dcc0999a64cbce13d591133cf51a06`。`git diff --check` 通过；未执行真实战斗回归。
+本轮新增仅测试钩子可用的 `__test_kill [敌人编号|all]`，无参数默认击杀全部存活敌人。它在玩家出牌阶段调用原版 `CreatureCmd.Kill(force: true)` 并继续调用 `CombatManager.CheckWinCondition()`，以便测试敌人死亡后的房间、奖励流程；它跳过伤害、格挡和 `ShouldDie`，不覆盖战斗伤害规则。设置 `SPIRECLI_ENABLE_TEST_HOOKS=1` 启动 `server.py` 后，网页终端 `help` 会列出此命令。之后固定种子 `BOSSFLOW` 已用它完成第一幕 Boss 结算并验证下一幕入口，记录见 `.cache/boss-transition-smoke.json`；这仍不等于真实出牌战斗回归。
 
 ## 4. 目录与资料索引
 
@@ -335,7 +335,7 @@ rg -n 'ShowScreen|RelicsSelected|FromChooseABundleScreen' .cache/source
 - 宝箱：调用 `DoNormalRewards`、`DoExtraRewardsIfNeeded` 的开启及一次金币和遗物选择通过固定路径；无遗物及其他后续奖励组合未测。
 - 药水：命令校验沿用原版 Usage、时机、可用性和目标检查；本轮没有药水行动 smoke。
 - 事件：通过原版事件同步器完成两个事件的嵌套单选/多选；其他事件、禁用项、退出与代价分支未测。
-- 章节/结局/解锁：Boss 后转换、最终事件、胜负记录、解锁进度仍未闭环验证。
+- 章节/结局/解锁：第一幕 Boss → 第二幕地图转场已验证；第二幕 Boss → 第三幕、最终事件、胜负记录、解锁进度仍未闭环验证。
 - 图形对照：没有同种子、同进度与同决策的普通 GUI 对照；TestMode 差异先按第 11 节继续审计。
 
 所有战士可触达的原版内容应进入覆盖表；不能只测初始三种牌。完整一局通过是必要条件，但不是“所有机制 1:1”的充分证据。
@@ -442,5 +442,56 @@ rg -n 'ShowScreen|RelicsSelected|FromChooseABundleScreen' .cache/source
 - 多选快照提供原版 `min/max` 范围；网页点选卡牌可累积/取消待选项，再点击“确认选择”提交 `choose 1 2`。
 - 单选事件、房间候选项、跳过/返回按钮、商店商品和可达路线点击后直接调用对应内置命令；命令框保留为手动操作方式。命令历史项点击仍只填入命令框。此次前端改动后 `node --check web/app.js` 与 `git diff --check` 通过；未做浏览器点测。上方运行流程测试结果来自之前的交互补丁，不覆盖此次点击直执行行为。
 - 修复全屏路线页可能遮住休息处选择的问题：手动输入 `move` 会先收起路线页；进入休息处后优先显示原版营火行动，选项清空且可离开后再允许自动打开地图。营火选项使用“营火行动”标题。`node --check web/app.js` 和 `git diff --check` 通过；未在浏览器中重走休息处流程。
-- 最新 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 通过（0 warning、0 error）；`engine_smoke.py`、`choice_adapters_smoke.py`、`room_flow_smoke.py`、`http_smoke.py`、`node --check web/app.js`、`python3 -m py_compile tests/room_flow_smoke.py`、`git diff --check` 通过。存档与幕首 smoke 未在本轮最新补丁后重跑。
-- 最新 `runtime/Main.cs` / Godot Mono assembly SHA-256：`ab2b9bcf5e03276db96248db571f2955a47497bca9aa411fa8d90812fd2f3287` / `9254deee39868942ee2251df107e617aa23cf07235fec47bbf6d550cbb18c7e9`。原版来源边界、TestMode 差异、Build 归属及完整性限制仍按 `docs/engine-coverage.md` 和 `docs/sources.md`。
+- 排查地图节点间歇性无法进入的问题，发现最上层手绘笔迹默认响应鼠标，覆盖节点时会挡住路线点击。笔迹保持视觉上层，普通模式改为鼠标穿透，仅擦除模式接收笔迹点击。隔离的 Chrome/TestMode 内存会话中，在可达战斗节点上画线、关闭手绘工具再点该节点，实际进入战斗；临时服务已关闭，未触碰用户当前游戏会话。
+- 修复房间入口自动被地图覆盖：运行时 `CanLeave()` 对未额外限制的房间（含商店）返回 true，网页此前把可离店条件误作自动开图条件；现在休息处仍有原版营火选项或商店仍有商品选项时，都抑制自动全屏地图，先显示房间交互，手动 `map` 仍能打开地图，并兼容 `RestSiteRoom` 阶段名。隔离 Chrome/TestMode 内存会话按固定种子从地图点击进入商店和休息处，分别确认商品、营火行动/休息/锻造可见且没有全屏地图覆盖；临时服务和标签页已关闭，未触碰用户当前会话。`node --check web/app.js` 与 `git diff --check` 通过。
+- 宝箱房间进入时，快照现在提供原版 `open` 对应的“开启宝箱”网页按钮；开启后继续显示原版遗物候选和跳过选项。命令历史面板暂时从布局隐藏，当前标签页记录仍保留在 `sessionStorage`，命令框继续可用。
+- 修复地图与问号事件的前端状态切换：`Event/EventRoom` 在有原版选项、或仍未完成结算时强制收起自动地图和已打开的地图覆盖层，避免问号事件选项被地图盖住而看起来像被跳过；事件完成后同一地点会自动重新打开地图。路线清单新增“查看地图”按钮，命令框仍可输入 `map`；显式打开地图时保留覆盖层，关闭后仍能看到房间文本和选项。
+- 检查事件动态文本：原版 `.cache/source/MegaCrit.Sts2.Core.Models.Events/Wellspring.cs` 的 `CanonicalVars` 明确定义 `BatheCurses=1`，`Bathe()` 用该变量添加 1 张愧疚；此前适配层只调用 `Text(o.Description)`，没有注入 `eventModel.DynamicVars`，所以网页显示了字面量 `[BatheCurses]`。`runtime/Main.cs` 现保留 `EventOption` 构造时的角色详情/多人变量，并按原版 `NEventOptionButton._Ready` 在显示标题/说明前注入事件动态变量；固定 `WEBTEST` 房间流程确认“仔细翻找”显示“失去14点生命，获得天选芝士。”，不含 `{Damage}` 占位符。
+- 动态文本修复后，最新 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers`、`python3 tests/room_flow_smoke.py --seed WEBTEST`、`node --check web/app.js`、`git diff --check` 均通过；其它 smoke 使用前一轮交互补丁的结果，存档与幕首 smoke 未在本轮最新补丁后重跑。
+- 最新 `runtime/Main.cs` / Godot Mono assembly SHA-256：`38aa34ea28e0cd733b56577a305fc95cfdaf6de46d7d7ba73a10a96e7700cd93` / `12dfc790f98e9e10386a5b268ca453d64d5d751c19e83000cafa09b412188dfd`。原版来源边界、TestMode 差异、Build 归属及完整性限制仍按 `docs/engine-coverage.md` 和 `docs/sources.md`。
+
+## 20. Boss 战敌方信息修正（2026-09-22）
+
+用户反馈 Boss 战没有显示 Boss 信息。检查发现快照只从玩家 Creature 的 CombatState 读取敌人，且意图悬浮提示、Power 说明任一原版资源异常都可能中断整个敌方视图生成。现在战斗期间优先读取原版 `CombatManager.DebugOnlyGetState().Enemies`，并将每个敌人的名称、意图、Power 分开保护；缺少意图贴图时仍保留敌人名称、当前/最大生命和可生成的原版文字。快照新增当前 CombatRoom 的原版遭遇标题与是否 Boss 标记，网页在 Boss 战面板显示该标题。
+
+隔离 TestMode 固定路线 `BOSSFLOW` 已通过原版路线进入 Boss 战，报告 `.cache/boss-display-smoke.json` 确认：`combat.type=Boss`、Boss“仪式兽”、`252/252` HP 以及原版“强化”意图说明。最新构建 0 warning、0 error；`engine_smoke`、`room_flow_smoke`、`node --check web/app.js` 和 `git diff --check` 通过。该验证只覆盖一个 Boss 和首回合快照；全部 Boss、多阶段 Boss、普通图形模式和浏览器视觉仍未覆盖，不能据此宣称完整 1:1。
+
+## 21. Boss 结算进入下一幕（2026-09-22）
+
+用户反馈第一幕 Boss 打完后无法进入下一轮。原版 `.cache/source/MegaCrit.Sts2.Core.Runs/RunManager.cs` 的 `EnterNextAct()` 已规定：当前幕不是最后一幕时调用 `EnterAct(CurrentActIndex + 1)`，最后一幕进入 `TheArchitect` 终局事件；标准 `ActModel.GetRandomList()` 在本构建生成 3 幕。问题在终端入口：Boss 地图点没有 `Children`，结算后 `routes=[]`，网页只显示路线列表，因此没有可点击动作。
+
+现在 `runtime/Main.cs` 在 Boss 奖励、战斗和原版结算全部完成后提供 `proceed`；快照 `actions` 暴露“进入下一幕”，第三幕暴露“进入终局事件”。该命令仍直接调用原版 `RunManager.EnterNextAct()`，没有由网页重造地图或房间。快照新增 `actCount`，网页阶段显示“第 X/3 幕”。
+
+`python3 tests/boss_transition_smoke.py --seed BOSSFLOW` 已通过：使用测试专用原版死亡入口完成第一幕 Boss，确认结算前有 `proceed` 动作，执行后状态为第 2 幕 `Map`，并出现唯一 `Ancient` 开局路线；报告 `.cache/boss-transition-smoke.json`。该 smoke 只验证 Boss 后续流程和入口，不将测试击杀当作战斗伤害规则验证。最新构建 0 warning、0 error，`node --check web/app.js`、`python3 -m py_compile tests/boss_transition_smoke.py`、`git diff --check` 通过。
+
+## 22. 问号事件初始化时序（2026-09-22）
+
+用户再次反馈点击问号后直接回到地图。固定种子 `BOSSFLOW` 的 Godot Host 重复验证显示，原版 Unknown 点实际进入 `EventRoom`，并产生 2 个原版事件选项；HTTP 桥没有把事件规则替换成空流程。
+
+根因是原版 `.cache/source/MegaCrit.Sts2.Core.Rooms/EventRoom.cs` 在 `EnterInternal()` 中调用 `EventSynchronizer.BeginEvent()`，而 `.cache/source/MegaCrit.Sts2.Core.Multiplayer.Game/EventSynchronizer.cs` 对 `EventModel.BeginEvent()` 使用 `TaskHelper.RunSafely()` 异步启动。此前 `Settle()` 可能在选项填充前发布空快照，网页仅凭 `options/canLeave` 判断时会出现地图覆盖或“事件被跳过”的表象。
+
+另需区分原版随机规则：`.cache/source/MegaCrit.Sts2.Core.Odds/UnknownMapPointOdds.cs` 规定全新 `NumberOfRuns == 0` 时前两个 Unknown 固定为事件、第三个固定为普通战；之后 `?` 可按原版概率变成事件、战斗、宝箱或商店。只有快照 `phase=Event/EventRoom` 时才是事件入口。
+
+现已修复：
+
+- `runtime/Main.cs` 在返回命令快照前等待未完成且选项为空的原版事件初始化；`CanLeave()` 和事件提示也拒绝把该状态当成已完成。
+- 快照增加 `eventState.initialized/finished/optionCount`；`web/app.js` 在初始化状态或路线点击刚进入事件时强制收起地图并清除残留手动地图标记。
+- 新增 `tests/unknown_event_smoke.py`，固定 `BOSSFLOW` 进入 Unknown 点，确认事件先显示原版选项、`canLeave=false`；报告为 `.cache/unknown-event-smoke.json`。
+
+本轮 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers`、`engine_smoke`、`room_flow_smoke`、`unknown_event_smoke`、`node --check web/app.js`、Python 编译检查及 `git diff --check` 均通过。仍未完成普通图形版同种子对照和全部随机事件覆盖。
+
+本轮最终 `runtime/Main.cs` / Godot Mono assembly SHA-256 为 `db1273350972dffc085eb59fe29b27ae612dc5d0032cd9703714854ee497febe` / `93bae58c1c400ecc3175611c1c14f66fefccf7a4c6835584738de1fe43b27f56`；同一构建下 `boss_transition_smoke`、`act_opening_smoke`、`choice_adapters_smoke` 和 `save_smoke` 也通过。
+
+## 23. 休息处被地图覆盖（2026-09-22）
+
+用户反馈进入休息处后又直接显示地图。固定 `WEBTEST` 进入休息处的原版快照实际包含“休息”和“锻造”两个选项，`canLeave=false`；因此原版 `RestSiteSynchronizer` 和房间入口没有跳过。问题在网页地图同步：休息处此前只用 `options.length > 0` 抑制地图，空选项的过渡快照没有使用 `canLeave=false`，旧的路线覆盖层可能继续保留。
+
+现已修复：
+
+- `web/app.js` 将休息处和所有尚未完成的非地图房间统一按 `canLeave=false` 收起旧地图；休息处即使选项列表暂时为空，也不会把地图当成交互结果。
+- `runtime/Main.cs` 快照新增 `restState.initialized/actionCompleted/optionCount/enabledCount`，用于区分原版行动是否已生成、是否成功完成。
+- `tests/room_flow_smoke.py` 现在断言进入休息处时行动已初始化但尚未完成，取消锻造后仍不可离开，成功休息后才开放路线。
+
+本轮重新构建并通过 `room_flow_smoke`、`unknown_event_smoke`、`node --check web/app.js`、Python 编译检查和 `git diff --check`。普通浏览器点击回归仍受当前环境没有浏览器控制面的限制。
+
+本轮最终 `runtime/Main.cs` / Godot Mono assembly SHA-256 为 `5a1fedf53d5ea44ccb17b47f8d6829cbd3d515a6f196c586c68b64728850866a` / `01b6a43e99f139b127eb8611d25bb26328f249f211cdb35db26f828eaab114f7`。

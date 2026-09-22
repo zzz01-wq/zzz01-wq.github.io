@@ -177,8 +177,9 @@ def main() -> int:
                     require(state.get("canLeave"), "proceed failed after the original event finished")
                     room_checks["Event_single"] = {"nested_selection": True, "finished": True}
                 elif floor == 5:
-                    require(len(options) > 1 and "{Damage}" in options[1].get("description", ""),
-                            "Raw localized event fallback did not preserve its unresolved Damage token")
+                    search_description = options[1].get("description", "") if len(options) > 1 else ""
+                    require("{Damage}" not in search_description and "失去14点生命" in search_description,
+                            "Original event dynamic Damage variable was not formatted in the option description")
                     before = state["player"]["deck"]
                     state = host.command(f"choose {options[0]['index']}")
                     require(state.get("phase") == "choice" and "2–2" in state.get("prompt", "")
@@ -193,7 +194,7 @@ def main() -> int:
                     require(state.get("canLeave"), "Second WEBTEST event did not finish after its nested choice")
                     room_checks["Event_multi"] = {"selected": 2, "deck_before": before,
                                                    "deck_after": state["player"]["deck"],
-                                                   "raw_variable_fallback": True}
+                                                   "dynamic_option_text": search_description}
                 else:
                     state = host.command(f"choose {options[0]['index']}")
                     state = settle_rewards_and_selectors(host, state)
@@ -201,6 +202,11 @@ def main() -> int:
             elif room == "RestSite":
                 options = [option for option in state.get("options", []) if not option.get("disabled")]
                 require(options, "The original rest site exposed no enabled options")
+                rest_state = state.get("restState") or {}
+                require(rest_state.get("initialized") is True
+                        and rest_state.get("actionCompleted") is False
+                        and rest_state.get("optionCount") == len(state.get("options", [])),
+                        f"Rest-site entry did not expose an unfinished original action state: {state}")
                 before = state["player"]["hp"]
                 require(all(option.get("command") == f"choose {option['index']}"
                             for option in state.get("options", [])),
@@ -224,6 +230,8 @@ def main() -> int:
                 require(heal is not None, "Original rest site did not expose its enabled Heal option")
                 state = host.command(f"choose {heal['index']}")
                 require(state.get("canLeave"), "Successful original rest-site choice did not unlock travel")
+                require((state.get("restState") or {}).get("actionCompleted") is True,
+                        "Successful original rest-site choice did not mark the adapter action complete")
                 require(state["player"]["hp"] >= before, "Original rest-site action unexpectedly reduced HP")
                 room_checks.setdefault("RestSite", {"smith_cancelled": True,
                                                      "hp_before": before,

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PatchSts2Bridges")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fe1f703ffc176b7bd15a81215b3a91a632d3cc70")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+00f02e0687392b76eae465deee12317849f0d265")]
 [assembly: System.Reflection.AssemblyProductAttribute("PatchSts2Bridges")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PatchSts2Bridges")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

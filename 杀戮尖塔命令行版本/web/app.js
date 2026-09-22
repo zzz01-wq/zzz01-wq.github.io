@@ -61,6 +61,8 @@
   let activeMapPointer = null;
   let mapAutoKey = "";
   let mapSuppressedKey = "";
+  let mapChoiceContext = "";
+  let mapManualKey = "";
   let selectionDraftKey = "";
   let selectionDraftIndices = new Set();
 
@@ -252,14 +254,53 @@
       mapStrokes = readMapStrokes();
       activeMapStroke = null;
       activeMapPointer = null;
+      mapChoiceContext = "";
+      mapManualKey = "";
       setMapTool("none");
     }
     const context = mapContext(s);
-    const canShowRoutes = (s.phase === "Map" || s.phase === "MapRoom" || s.canLeave) && Array.isArray(s.routes) && s.routes.length > 0;
-    if (canShowRoutes && mapAutoKey !== context) {
-      mapAutoKey = context;
-      if (mapSuppressedKey !== context) mapOpen = true;
+    if (mapManualKey && mapManualKey !== context) mapManualKey = "";
+    const manualMap = mapManualKey === context;
+    const hasRoomChoices = Array.isArray(s.options) && s.options.length > 0;
+    const eventRoom = s.phase === "Event" || s.phase === "EventRoom";
+    const eventState = s.eventState && typeof s.eventState === "object" ? s.eventState : null;
+    const eventInitializing = eventRoom && eventState && eventState.initialized === false;
+    const eventChoicesVisible = eventRoom && (eventInitializing || hasRoomChoices || !s.canLeave);
+    const restRoom = s.phase === "RestSite" || s.phase === "RestSiteRoom";
+    const restState = s.restState && typeof s.restState === "object" ? s.restState : null;
+    const restChoicesVisible = restRoom && (hasRoomChoices || !s.canLeave || (restState && restState.actionCompleted === false));
+    const treasureChoicesVisible = (s.phase === "Treasure" || s.phase === "TreasureRoom") && hasRoomChoices;
+    const shopChoicesVisible = (s.phase === "Shop" || s.phase === "MerchantRoom") && hasRoomChoices;
+    // Events, rest sites and treasure rooms must show their original choices
+    // before navigation. Shops allow leaving before buying, but their goods
+    // still take precedence in the main workspace. An explicit `map` command
+    // remains allowed and keeps the overlay open.
+    const roomChoicesVisible = eventChoicesVisible || restChoicesVisible || treasureChoicesVisible || shopChoicesVisible;
+    // A stale route overlay must not survive a room transition that still
+    // requires interaction. This also covers a transient RestSite snapshot
+    // whose original option list has not been exposed yet.
+    const navigationRoom = s.phase === "Map" || s.phase === "MapRoom" || s.phase === "ready";
+    if (!navigationRoom && s.canLeave === false && !manualMap) mapOpen = false;
+    if (roomChoicesVisible) {
+      mapChoiceContext = context;
+      mapSuppressedKey = context;
+      if (!manualMap) mapOpen = false;
     }
+    const canShowRoutes = !roomChoicesVisible
+      && (s.phase === "Map" || s.phase === "MapRoom" || s.canLeave)
+      && Array.isArray(s.routes) && s.routes.length > 0;
+    if (canShowRoutes && (mapAutoKey !== context || mapChoiceContext === context)) {
+      mapAutoKey = context;
+      if (mapChoiceContext === context) {
+        // The same room has just transitioned from an unresolved choice to a
+        // completed state (for example an Unknown event). Open navigation
+        // automatically instead of retaining the previous suppression key.
+        mapChoiceContext = "";
+        mapSuppressedKey = "";
+      }
+      if (manualMap || mapSuppressedKey !== context) mapOpen = true;
+    }
+    if (manualMap) mapOpen = true;
     mapView.hidden = !mapOpen;
     document.body.classList.toggle("map-is-open", mapOpen);
     mapDrawButton.setAttribute("aria-pressed", mapTool === "draw" ? "true" : "false");
@@ -409,7 +450,10 @@
       return;
     }
     const parts = [];
-    if (Number(s.act) > 0) parts.push("第 " + s.act + " 幕");
+    if (Number(s.act) > 0) {
+      const actCount = Number(s.actCount) > 0 ? "/" + s.actCount : "";
+      parts.push("第 " + s.act + actCount + " 幕");
+    }
     if (Number(s.floor) > 0) parts.push("第 " + s.floor + " 层");
     if (s.phase) parts.push(phaseLabels[s.phase] || String(s.phase));
     $("#stage").textContent = parts.join(" · ") || "旅程进行中";
@@ -474,9 +518,15 @@
   function renderEncounter(s) {
     encounter.replaceChildren();
     const enemies = Array.isArray(s.enemies) ? s.enemies : [];
-    encounter.hidden = enemies.length === 0;
+    const combat = s.combat && typeof s.combat === "object" ? s.combat : null;
+    const isBoss = Boolean(combat && combat.isBoss);
+    encounter.hidden = enemies.length === 0 && !isBoss;
+    if (encounter.hidden) return;
+    encounter.append(sectionHeading(isBoss ? "首领战" : "敌方单位", enemies.length ? enemies.length + " 个" : "准备中"));
+    if (isBoss && combat && combat.name) {
+      encounter.append(el("div", "boss-title", combat.name));
+    }
     if (!enemies.length) return;
-    encounter.append(sectionHeading("敌方单位", enemies.length + " 个"));
     const list = el("div", "enemies");
     enemies.forEach((enemy) => {
       const unit = el("article", "enemy");
@@ -573,7 +623,10 @@
     choice.hidden = !options.length && !actions.length && !showRouteList && !eventText;
     if (choice.hidden) return;
     if (options.length) {
-      choice.append(sectionHeading(s.phase === "RestSite" ? "营火行动" : "当前选项", value(s.prompt)));
+      const optionHeading = (s.phase === "RestSite" || s.phase === "RestSiteRoom") ? "营火行动"
+        : (s.phase === "Treasure" || s.phase === "TreasureRoom") ? "宝箱"
+        : (s.phase === "Shop" || s.phase === "MerchantRoom") ? "商店商品" : "当前选项";
+      choice.append(sectionHeading(optionHeading, value(s.prompt)));
       if (eventText) choice.append(el("div", "event-text", eventText));
       const list = el("div", "option-list");
       options.forEach((option, index) => {
@@ -642,6 +695,12 @@
     if (showRouteList) {
       const section = el("div", "route-section");
       section.append(sectionHeading(s.canLeave ? "可前往路线" : "路线预览", s.canLeave ? "move 编号" : "完成当前房间后可前往"));
+      const openMap = el("button", "choice-action", "查看地图");
+      openMap.type = "button";
+      openMap.dataset.command = "map";
+      openMap.disabled = Boolean(s.busy || !connected || submitting);
+      openMap.title = "打开可滚动路线图；也可在命令框输入 map";
+      section.append(openMap);
       const list = el("div", "route-list");
       routes.forEach((route, index) => {
         const row = el("button", "route-row");
@@ -724,6 +783,8 @@
       mapOpen = false;
       mapAutoKey = "";
       mapSuppressedKey = "";
+      mapChoiceContext = "";
+      mapManualKey = "";
     }
     interactionStarted = true;
     welcome.hidden = true;
@@ -754,16 +815,26 @@
       if (verb === "map") {
         mapOpen = true;
         mapSuppressedKey = "";
+        mapManualKey = mapContext(body);
       }
-      if (verb === "move" && body.phase === "RestSite") {
+      const isRestSite = body.phase === "RestSite" || body.phase === "RestSiteRoom";
+      const isEventRoom = body.phase === "Event" || body.phase === "EventRoom";
+      if (verb === "move" && isEventRoom) {
+        // A route click must never leave the full-screen map above a newly
+        // entered event, even if a stale/manual map key survived the click.
+        mapOpen = false;
+        mapManualKey = "";
+        mapSuppressedKey = mapContext(body);
+      } else if (verb === "move" && isRestSite) {
         // Keep the rest-site action menu in front when arriving. The player
         // must first see the original Heal/Smith choices; the route map can
         // open after a successful choice or on an explicit `map` command.
         mapOpen = false;
         mapSuppressedKey = mapContext(body);
-      } else if (body.phase === "RestSite" && body.canLeave && (!Array.isArray(body.options) || body.options.length === 0)) {
+      } else if (isRestSite && body.canLeave && (!Array.isArray(body.options) || body.options.length === 0)) {
         mapAutoKey = "";
         mapSuppressedKey = "";
+        mapChoiceContext = "";
       }
       const routeMapReplacesText = verb === "map" || (verb === "proceed" && body.canLeave && Array.isArray(body.routes) && body.routes.length > 0);
       applySnapshot(body, routeMapReplacesText ? false : undefined);
@@ -812,6 +883,7 @@
   mapCloseButton.addEventListener("click", () => {
     mapOpen = false;
     mapSuppressedKey = state ? mapContext(state) : "";
+    mapManualKey = "";
     mapView.hidden = true;
     setMapTool("none");
     renderChoices(state || {});
