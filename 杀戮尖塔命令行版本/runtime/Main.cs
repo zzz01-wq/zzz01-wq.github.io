@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Saves;
+using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -50,7 +51,20 @@ public partial class Main : Node, ICardSelector
     private int rewardSelectionIndex;
     private bool cardSelectionCancelable;
     private bool restDone, treasureOpened, treasurePicking, treasureDone, gameWon;
+    // The original map vote action only records the vote. The follow-up
+    // MoveToMapCoordAction starts RunManager.EnterMapCoord through an
+    // untracked TaskHelper task, so its GameAction can finish while the run
+    // is still sitting in MapRoom. Keep the target until the room itself has
+    // entered; otherwise the web client can receive one last map snapshot and
+    // cover a freshly entered event or rest site with the route overlay.
+    private MapCoord? pendingMapMoveDestination;
+    private AbstractRoom? pendingMapMoveSourceRoom;
     private bool treasureAwardHandlerAttached;
+    // Event transformations are recorded by the original CardCmd in the
+    // current map-point history. Keep a cursor so the terminal can report the
+    // exact original -> final card after the original event task settles.
+    private PlayerMapPointHistoryEntry? observedEventHistoryEntry;
+    private int reportedEventTransformCount;
     private string seed = "";
     private bool failed;
     private bool TestHooksEnabled => System.Environment.GetEnvironmentVariable("SPIRECLI_ENABLE_TEST_HOOKS") == "1";
@@ -102,7 +116,6 @@ public partial class Main : Node, ICardSelector
             ChoiceAdapters.Attach(this);
             RewardsSet.testSelector = OfferRewards;
             CM.CombatWon += room => { if (room.Encounter.ShouldGiveRewards) Track(room.OfferRoomEndRewards()); };
-            Say("终端已就绪。输入 new ironclad 开始，输入 help 查看命令。\n规则来源：本机原版程序集；命令界面处于验证阶段。");
             Publish();
             while (true)
             {
@@ -151,15 +164,25 @@ public partial class Main : Node, ICardSelector
         for (int i = 0; i < 600; i++)
         {
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-            if (operation?.IsFaulted == true) await operation;
+            if (operation?.IsFaulted == true)
+            {
+                pendingMapMoveDestination = null;
+                pendingMapMoveSourceRoom = null;
+                await operation;
+            }
             foreach (var task in background.Where(t => t.IsFaulted).ToArray()) await task;
             background.RemoveAll(t => t.IsCompleted);
+            if (MapMoveTransitionPending() || RestInitializationPending()) continue;
             // EventRoom.EnterInternal starts the original EventSynchronizer.BeginEvent
             // task without awaiting it. Do not publish a room snapshot while that
             // task still owns an empty, unfinished EventModel; the web client would
             // otherwise see no choices and could reopen the map over the event.
             if (EventInitializationPending()) continue;
-            if (Choosing || (!Busy && !EngineBusy && (!CM.IsInProgress || Playing || Dead))) return;
+            if (Choosing || (!Busy && !EngineBusy && (!CM.IsInProgress || Playing || Dead)))
+            {
+                ReportEventCardChanges();
+                return;
+            }
         }
         throw new CommandError("仍在结算。输入 status 获取状态；不要重复上一条操作。");
     }
@@ -172,6 +195,26 @@ public partial class Main : Node, ICardSelector
 
     private bool EventInitializationPending()
         => run?.CurrentRoom is EventRoom eventRoom && EventInitializationPending(eventRoom);
+
+    private bool MapMoveTransitionPending()
+    {
+        if (!pendingMapMoveDestination.HasValue) return false;
+        if (run == null
+            || !run.CurrentMapCoord.HasValue
+            || run.CurrentMapCoord.Value != pendingMapMoveDestination.Value
+            || run.CurrentRoom is null
+            || run.CurrentRoom == pendingMapMoveSourceRoom
+            || run.CurrentRoom is MapRoom)
+            return true;
+        pendingMapMoveDestination = null;
+        pendingMapMoveSourceRoom = null;
+        return false;
+    }
+
+    private bool RestInitializationPending()
+        => run?.CurrentRoom is RestSiteRoom restSite
+            && !restDone
+            && restSite.Options.Count == 0;
 
     private async Task Dispatch(string input)
     {
@@ -372,6 +415,8 @@ public partial class Main : Node, ICardSelector
                 var next=NextPoints(); var point=next[Index(a,1,next.Count)];
                 if(point.PointType is MapPointType.Ancient or MapPointType.Unknown) MountReferencePack();
                 restDone=false;treasureOpened=false;treasurePicking=false;treasureDone=false;
+                pendingMapMoveDestination = point.coord;
+                pendingMapMoveSourceRoom = run.CurrentRoom;
                 Start(Enqueue(new VoteForMapCoordAction(player,run.MapLocation,new MapVote {coord=point.coord,mapGenerationCount=RM.MapSelectionSynchronizer.MapGenerationCount}))); break;
             case "proceed":
                 if(!CanLeave()) throw new CommandError("当前房间尚未结束。");
@@ -531,6 +576,10 @@ public partial class Main : Node, ICardSelector
         treasureOpened=false;
         treasurePicking=false;
         treasureDone=false;
+        pendingMapMoveDestination=null;
+        pendingMapMoveSourceRoom=null;
+        observedEventHistoryEntry=null;
+        reportedEventTransformCount=0;
         seed="";
     }
 
@@ -827,6 +876,43 @@ public partial class Main : Node, ICardSelector
         if(run.CurrentRoom is MapRoom) return NextPoints().Count>0;
         return run.CurrentRoom switch {CombatRoom c=>c.IsPreFinished, EventRoom e=>!EventInitializationPending(e)&&e.LocalMutableEvent.IsFinished,RestSiteRoom=>restDone,TreasureRoom=>treasureDone,_=>true};
     }
+
+    private void ReportEventCardChanges()
+    {
+        if(run?.CurrentRoom is not EventRoom || player==null) return;
+        PlayerMapPointHistoryEntry? historyEntry;
+        try { historyEntry=run.CurrentMapPointHistoryEntry?.GetEntry(player.NetId); }
+        catch(Exception) { return; }
+        if(historyEntry==null) return;
+        if(!ReferenceEquals(historyEntry,observedEventHistoryEntry))
+        {
+            observedEventHistoryEntry=historyEntry;
+            reportedEventTransformCount=historyEntry.CardsTransformed.Count;
+            return;
+        }
+        if(historyEntry.CardsTransformed.Count<=reportedEventTransformCount) return;
+        foreach(var change in historyEntry.CardsTransformed.Skip(reportedEventTransformCount))
+            Say($"原版变化结果：{SerializableCardName(change.OriginalCard)} → {SerializableCardName(change.FinalCard)}");
+        reportedEventTransformCount=historyEntry.CardsTransformed.Count;
+    }
+
+    private static string SerializableCardName(SerializableCard card)
+    {
+        if(card.Id is not { } id) return "未知卡牌";
+        try
+        {
+            CardModel model=ModelDb.GetById<CardModel>(id);
+            string title=Clean(model.Title);
+            int level=Math.Min(Math.Max(card.CurrentUpgradeLevel,0),model.MaxUpgradeLevel);
+            if(level>0) title+=model.MaxUpgradeLevel>1?$"+{level}":"+";
+            return title;
+        }
+        catch(Exception)
+        {
+            return id.Entry+(card.CurrentUpgradeLevel>0?$"+{card.CurrentUpgradeLevel}":"");
+        }
+    }
+
     private List<MapPoint> NextPoints()
     {
         if(run==null)return [];
@@ -1026,7 +1112,7 @@ public partial class Main : Node, ICardSelector
         }
         if(run?.CurrentRoom is TreasureRoom)
             return !treasureOpened?"open 开箱并领取原版金币和附加奖励":!treasureDone?"choose 编号领取遗物 · skip 跳过遗物":"move 编号前进 · proceed 查看路线";
-        if(run?.CurrentRoom is MerchantRoom)return "buy 编号购买商品 · move 编号离开 · shop 在日志查看清单";
+        if(run?.CurrentRoom is MerchantRoom)return "buy 编号购买商品 · proceed 离开商店 · move 编号也可直接前进 · shop 查看清单";
         return run==null?(SaveManager.Instance.HasRunSave?"continue 恢复存档 · abandon 删除存档":"new ironclad 开始旅程"):"map 查看路线 · move 编号前进";
     }
     private object CardView(CardModel c,int i,string? command=null,bool multiSelect=false)=>new {index=i+1,id=c.Id.Entry,name=c.Title,cost=c.EnergyCost.GetWithModifiers(CostModifiers.All),description=Clean(c.GetDescriptionForPile(c.Pile?.Type??PileType.None)),type=c.Type.ToString(),targetType=c.TargetType.ToString(),command,multiSelect};
@@ -1061,6 +1147,8 @@ public partial class Main : Node, ICardSelector
         else if(Rewards is { DisallowSkipping:false })actions.Add(new {label="跳过剩余奖励",command="skip"});
         else if(run?.CurrentRoom is TreasureRoom&&treasureOpened&&!treasurePicking&&!treasureDone&&RM.TreasureRoomRelicSynchronizer.CurrentRelics!=null)
             actions.Add(new {label="跳过遗物",command="skip"});
+        else if(run?.CurrentRoom is MerchantRoom && CanLeave())
+            actions.Add(new {label="离开商店",command="proceed"});
         else if(run?.CurrentRoom is CombatRoom { RoomType:RoomType.Boss } && NextPoints().Count==0 && CanLeave())
             actions.Add(new {label=run.CurrentActIndex>=run.Acts.Count-1?"进入终局事件":"进入下一幕",command="proceed"});
         return actions.ToArray();

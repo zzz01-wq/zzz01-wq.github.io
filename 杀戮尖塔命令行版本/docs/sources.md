@@ -38,6 +38,12 @@
 - `.cache/source/MegaCrit.Sts2.Core.Events/EventOption.cs` 的 `AddLocVars()` 注入角色详情和 `IsMultiplayer`；`.cache/source/MegaCrit.Sts2.Core.Nodes.Events/NEventOptionButton.cs` 在显示前调用 `Event.DynamicVars.AddTo(Option.Description)` 与 `AddTo(Option.Title)`。事件选项的 `{Damage}`、`{BatheCurses}` 等占位符必须经过这条原版动态变量链路，不能在网页层硬编码。
 - `runtime/Main.cs` 的 `EventOptionText()` 现在按该显示路径注入原版事件变量后再格式化选项标题和说明。固定 `WEBTEST` 房间流程已确认“仔细翻找”显示为“失去14点生命，获得天选芝士。”，不再显示 `{Damage}` 占位符。
 
+## 本机原版事件卡牌变化结果依据
+
+- `.cache/source/MegaCrit.Sts2.Core.Multiplayer.Game/EventSynchronizer.cs` 的 `ChooseOptionForEvent()` 将 `EventOption.Chosen()` 放入待处理任务，`AwaitPendingOptionTasks()` 等待这些原版任务完成；终端在同一结算边界后读取结果。
+- `.cache/source/MegaCrit.Sts2.Core.Commands/CardCmd.cs` 的牌堆变牌路径在目标是玩家牌组时，将 `new CardTransformationHistoryEntry(original, replacement)` 写入 `runState.CurrentMapPointHistoryEntry.GetEntry(original.Owner.NetId).CardsTransformed`。
+- `.cache/source/MegaCrit.Sts2.Core.Runs.History/CardTransformationHistoryEntry.cs` 保存原版 `SerializableCard.OriginalCard` 与 `FinalCard`，其中包含卡牌 `ModelId` 和升级等级。终端用 `ModelDb.GetById<CardModel>()` 格式化标题，只展示原版历史中的实际结果，不在网页层随机或推断变牌结果。
+
 ## 本机原版怪物状态文本依据
 
 - `.cache/source/MegaCrit.Sts2.Core.Models/PowerModel.cs` 的 `HoverTips` 用 `SmartDescription`（缺省时用 `Description`），并加入 `Amount`、`DynamicVars`、施加者、目标和拥有者等原版变量后格式化说明；`GetDumbHoverTip()` 是不含智能动态说明的原版回退。
@@ -63,6 +69,7 @@
 
 - `.cache/source/MegaCrit.Sts2.Core.Entities.RestSite/RestSiteOption.cs` 的 `Generate()` 建立本地选项并调用 `Hook.ModifyRestSiteOptions()`；选项可用性来自各自的 `IsEnabled`。
 - `.cache/source/MegaCrit.Sts2.Core.Rooms/RestSiteRoom.cs` 在进入房间时同步调用 `RestSiteSynchronizer.BeginRestSite()`，再由 `RestSiteRoom.Options` 暴露原版行动；终端快照的 `restState` 记录选项数量、可用数量和本次适配器是否已经成功完成一项行动。
+- `.cache/source/MegaCrit.Sts2.Core.Nodes.Rooms/NMerchantRoom.cs` 的原版 `_Ready()` 将 Proceed 按钮连接到 `HideScreen()`，`HideScreen()` 调用 `NMapScreen.Instance.Open()`；终端商店动作因此暴露为“离开商店”，调用已有 `proceed` 路径进入路线图，不把离店误当成购买或额外规则。
 - `.cache/source/MegaCrit.Sts2.Core.Multiplayer.Game/RestSiteSynchronizer.cs` 的 `ChooseOption()` 只有在 `OnSelect()` 返回成功时才记录休息选择并移除已选项或清空剩余项；取消选牌会返回 `false`，原选项继续保留。`.cache/source/MegaCrit.Sts2.Core.Entities.RestSite/SmithRestSiteOption.cs` 和 `CookRestSiteOption.cs` 都将原版 `CardSelectorPrefs.Cancelable` 及 `RequireManualConfirmation` 设为 `true`，空选牌时返回 `false`。
 - `.cache/source/MegaCrit.Sts2.Core.Entities.Merchant/MerchantCardRemovalEntry.cs` 将 `cancelable:true` 传给 `OneOffSynchronizer.DoLocalMerchantCardRemoval()`；`.cache/source/MegaCrit.Sts2.Core.Multiplayer.Game/OneOffSynchronizer.cs` 的原版选牌偏好允许取消，并且仅当返回了卡牌后才扣金币并移除卡牌。`.cache/source/MegaCrit.Sts2.Core.Rewards/CardRemovalReward.cs` 调用 `RewardSynchronizer.DoUnsyncedCardRemoval()`；该同步器也设为可取消，只有选到卡牌才移除。
 - `runtime/Main.cs` 只在这些原版可取消的休息处/商店/移除奖励选牌上下文中接受 `back`，并向原版 selector 返回空选择；其它强制选牌仍拒绝 `back`。`tests/room_flow_smoke.py` 用固定种子实测取消铁匠和商店移除后房间选项保留、可继续旅程且金币未减少。
@@ -74,6 +81,7 @@
 - `.cache/source/MegaCrit.Sts2.Core.Models/EventModel.cs` 的 `SetEventState()` 在当前选项列表为空时将事件标记为已完成；此状态变更可以发生在事件选项回调执行期间。
 - `.cache/source/MegaCrit.Sts2.Core.Multiplayer.Game/EventSynchronizer.cs` 将 `EventOption.Chosen()` 加入待处理任务；`AwaitPendingOptionTasks()` 等这些任务结束。`.cache/source/MegaCrit.Sts2.Core.Rooms/EventRoom.cs` 在退出事件房间前也会等待待处理选项任务。
 - `.cache/source/MegaCrit.Sts2.Core.Rooms/EventRoom.cs` 的 `EnterInternal()` 调用 `EventSynchronizer.BeginEvent()`，而 `.cache/source/MegaCrit.Sts2.Core.Multiplayer.Game/EventSynchronizer.cs` 的该方法对每个可变事件使用 `TaskHelper.RunSafely(eventModel.BeginEvent(...))`，不会等待 `BeginEvent()` 返回；原版 UI 依靠 `StateChanged` 后续刷新。桥接层的 `Settle()` 现在等待一个尚未完成且选项仍为空的 `EventModel` 完成初始化，并在快照中暴露 `eventState.initialized/finished/optionCount`，防止空选项瞬间被网页误当成可离房状态。
+- `.cache/source/MegaCrit.Sts2.Core.GameActions/VoteForMapCoordAction.cs` 只同步登记 `MapSelectionSynchronizer.PlayerVotedForMapCoord()`；宿主随后由 `.cache/source/MegaCrit.Sts2.Core.Multiplayer.Game/MapSelectionSynchronizer.cs` 排队 `MoveToMapCoordAction`，而 `.cache/source/MegaCrit.Sts2.Core.GameActions/MoveToMapCoordAction.cs` 又用 `TaskHelper.RunSafely(GoToMapCoord())` 启动未被动作本身等待的 `RunManager.EnterMapCoord()`。因此桥接层在每次 `move` 后记录目标坐标和源房间，`Settle()` 要等坐标已切换、源房间已退出且目标房间已进入，避免把中间 MapRoom 快照发给网页。
 - `.cache/source/MegaCrit.Sts2.Core.Odds/UnknownMapPointOdds.cs` 的 `Roll()` 规定：当 `UnlockState.NumberOfRuns == 0` 时，前两个 Unknown 点直接返回 `RoomType.Event`，第三个直接返回 `RoomType.Monster`；之后 Unknown 会按原版动态概率在事件、普通战、宝箱和商店等房间中抽取。因此地图上的 `?` 本身不保证每次都是事件；若快照的 `phase` 不是 `Event/EventRoom`，那是原版随机房间结果，不是事件被跳过。
 - 终端的事件路线提示和文字地图按 `CanLeave()` 判断是否可移动；该判断同时检查房间结束状态、原版动作结算、待处理选择、战斗状态和 `Hook.ShouldProceedToNextMapPoint()`。事件动作仍在结算时只显示路线预览。
 

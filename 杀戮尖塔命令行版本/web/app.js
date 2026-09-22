@@ -16,6 +16,7 @@
   const welcome = $("#welcome");
   const encounter = $("#encounter");
   const mapView = $("#map-view");
+  const mapCanvas = $(".map-canvas");
   const mapSvg = $("#map-svg");
   const mapGuides = $("#map-guides");
   const mapLinks = $("#map-links");
@@ -26,6 +27,10 @@
   const mapDrawButton = $("#map-draw");
   const mapEraseButton = $("#map-erase");
   const mapClearButton = $("#map-clear");
+  const mapZoomOutButton = $("#map-zoom-out");
+  const mapZoomResetButton = $("#map-zoom-reset");
+  const mapZoomInButton = $("#map-zoom-in");
+  const mapZoomLabel = $("#map-zoom-label");
   const mapCloseButton = $("#map-close");
   const choice = $("#choice");
   const hand = $("#hand");
@@ -38,6 +43,9 @@
   const commandLogKey = "spire-command-log-v1";
   const mapInkPrefix = "spire-map-ink-v1:";
   const svgNs = "http://www.w3.org/2000/svg";
+  const mapZoomMin = 0.75;
+  const mapZoomMax = 2.5;
+  const mapZoomStep = 0.25;
   let state = null;
   let connected = false;
   let submitting = false;
@@ -63,8 +71,15 @@
   let mapSuppressedKey = "";
   let mapChoiceContext = "";
   let mapManualKey = "";
+  let mapZoom = 1;
+  let mapFocusKey = "";
+  let mapFocusFrame = 0;
   let selectionDraftKey = "";
   let selectionDraftIndices = new Set();
+  // A targeted card is selected locally until the player chooses the target.
+  // The engine remains authoritative: the eventual `play` command is still
+  // validated by the original card target rules in the bridge.
+  let targetingCard = null;
 
   function readHistory() {
     try {
@@ -208,6 +223,39 @@
     if (detail) out.append(el("span", "section-detail", detail));
     return out;
   }
+  function cardTargetType(card) {
+    return card && typeof card.targetType === "string" ? card.targetType : "";
+  }
+  function cardNeedsTarget(card) {
+    const targetType = cardTargetType(card);
+    return targetType === "AnyEnemy" || targetType === "AnyAlly";
+  }
+  function syncTargeting(s) {
+    if (!targetingCard) return;
+    const cards = Array.isArray(s && s.hand) ? s.hand : [];
+    if (s?.phase !== "combat" || !cards.some((card) => Number(card.index) === targetingCard.index)) {
+      targetingCard = null;
+    }
+  }
+  function syncAllyTargetState(s) {
+    const target = $("#character-status");
+    if (!target) return;
+    const active = Boolean(targetingCard && targetingCard.targetType === "AnyAlly" && s?.phase === "combat" && !s.busy && !submitting && s.player);
+    target.classList.toggle("targetable", active);
+    if (active) {
+      target.dataset.targetIndex = "1";
+      target.setAttribute("role", "button");
+      target.setAttribute("tabindex", "0");
+      target.setAttribute("aria-label", "选择战士作为卡牌目标");
+      target.title = "点击选择战士作为目标";
+    } else {
+      delete target.dataset.targetIndex;
+      target.removeAttribute("role");
+      target.removeAttribute("tabindex");
+      target.removeAttribute("aria-label");
+      target.removeAttribute("title");
+    }
+  }
   function animateState(element) {
     if (element.hidden) return;
     element.classList.remove("state-enter");
@@ -218,6 +266,63 @@
     const current = s && s.map && s.map.current;
     const coord = current ? current.col + "," + current.row : "start";
     return [value(s && s.seed, "—"), value(s && s.act, 0), value(s && s.phase), coord].join(":");
+  }
+  function mapCurrentKey(s) {
+    const current = s && s.map && s.map.current;
+    if (!current) return "";
+    return [value(s && s.seed, "—"), value(s && s.act, 0), current.col, current.row].join(":");
+  }
+  function updateMapZoomUi() {
+    const percentage = Math.round(mapZoom * 100);
+    mapZoomLabel.textContent = percentage + "%";
+    mapZoomOutButton.disabled = mapZoom <= mapZoomMin;
+    mapZoomResetButton.disabled = Math.abs(mapZoom - 1) < 0.001;
+    mapZoomInButton.disabled = mapZoom >= mapZoomMax;
+    mapCanvas.dataset.zoomed = Math.abs(mapZoom - 1) < 0.001 ? "false" : "true";
+  }
+  function focusCurrentMapNode(force) {
+    if (mapView.hidden || !state || !state.map || !state.map.current) return false;
+    const key = mapCurrentKey(state);
+    if (!force && key && key === mapFocusKey) return true;
+    const node = mapNodes.querySelector(".map-node.current");
+    if (!node) return false;
+    const canvasRect = mapCanvas.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    const maxLeft = Math.max(0, mapCanvas.scrollWidth - mapCanvas.clientWidth);
+    const maxTop = Math.max(0, mapCanvas.scrollHeight - mapCanvas.clientHeight);
+    const left = mapCanvas.scrollLeft
+      + nodeRect.left + nodeRect.width / 2
+      - (canvasRect.left + canvasRect.width / 2);
+    const top = mapCanvas.scrollTop
+      + nodeRect.top + nodeRect.height / 2
+      - (canvasRect.top + canvasRect.height / 2);
+    mapCanvas.scrollTo({
+      left: Math.max(0, Math.min(maxLeft, left)),
+      top: Math.max(0, Math.min(maxTop, top)),
+      behavior: "auto"
+    });
+    mapFocusKey = key;
+    return true;
+  }
+  function scheduleMapFocus(force) {
+    if (mapView.hidden) return;
+    if (force) mapFocusKey = "";
+    if (mapFocusFrame) window.cancelAnimationFrame(mapFocusFrame);
+    mapFocusFrame = window.requestAnimationFrame(() => {
+      mapFocusFrame = 0;
+      focusCurrentMapNode(Boolean(force));
+    });
+  }
+  function setMapZoom(next) {
+    const zoom = Math.max(mapZoomMin, Math.min(mapZoomMax, Number(next)));
+    if (!Number.isFinite(zoom) || Math.abs(zoom - mapZoom) < 0.001) return;
+    mapZoom = Math.round(zoom * 100) / 100;
+    updateMapZoomUi();
+    if (state && !mapView.hidden) {
+      mapFocusKey = "";
+      renderMap(state);
+      scheduleMapFocus(true);
+    }
   }
   function mapInkStorageKey() {
     return mapInkPrefix + encodeURIComponent(mapStateKey || "unknown");
@@ -246,6 +351,13 @@
       mapOpen = false;
       mapView.hidden = true;
       document.body.classList.remove("map-is-open");
+      mapFocusKey = "";
+      mapZoom = 1;
+      mapSvg.style.removeProperty("margin-left");
+      mapSvg.style.removeProperty("margin-right");
+      mapSvg.style.removeProperty("margin-top");
+      mapSvg.style.removeProperty("margin-bottom");
+      updateMapZoomUi();
       return;
     }
     const nextStateKey = value(s.seed, "—") + ":" + value(s.act, 0);
@@ -256,6 +368,9 @@
       activeMapPointer = null;
       mapChoiceContext = "";
       mapManualKey = "";
+      mapZoom = 1;
+      mapFocusKey = "";
+      updateMapZoomUi();
       setMapTool("none");
     }
     const context = mapContext(s);
@@ -265,7 +380,8 @@
     const eventRoom = s.phase === "Event" || s.phase === "EventRoom";
     const eventState = s.eventState && typeof s.eventState === "object" ? s.eventState : null;
     const eventInitializing = eventRoom && eventState && eventState.initialized === false;
-    const eventChoicesVisible = eventRoom && (eventInitializing || hasRoomChoices || !s.canLeave);
+    const eventCompleted = eventRoom && eventState && eventState.finished === true;
+    const eventChoicesVisible = eventRoom && (eventInitializing || hasRoomChoices || !s.canLeave || eventCompleted);
     const restRoom = s.phase === "RestSite" || s.phase === "RestSiteRoom";
     const restState = s.restState && typeof s.restState === "object" ? s.restState : null;
     const restChoicesVisible = restRoom && (hasRoomChoices || !s.canLeave || (restState && restState.actionCompleted === false));
@@ -344,6 +460,18 @@
     const layout = mapLayout(points);
     mapSvg.setAttribute("viewBox", "0 0 " + layout.width + " " + layout.height);
     mapSvg.setAttribute("aria-label", "第 " + value(map.act, "?") + " 幕路线图，共 " + points.length + " 个节点");
+    mapSvg.style.removeProperty("margin-left");
+    mapSvg.style.removeProperty("margin-right");
+    mapSvg.style.removeProperty("margin-top");
+    mapSvg.style.removeProperty("margin-bottom");
+    if (Math.abs(mapZoom - 1) < 0.001) {
+      mapSvg.style.removeProperty("width");
+      mapSvg.style.removeProperty("height");
+    } else {
+      mapSvg.style.width = Math.round(layout.width * mapZoom) + "px";
+      mapSvg.style.height = Math.round(layout.height * mapZoom) + "px";
+    }
+    updateMapZoomUi();
     mapGuides.replaceChildren();
     mapLinks.replaceChildren();
     mapNodes.replaceChildren();
@@ -400,6 +528,9 @@
         node.setAttribute("role", "button");
         node.setAttribute("tabindex", "0");
         node.setAttribute("aria-label", title + "；点击立即前往，也可手动输入 move " + routeIndex);
+      } else if (point.current) {
+        node.setAttribute("aria-current", "location");
+        node.setAttribute("aria-label", title);
       }
       node.append(svgTitle, svgEl("circle", {cx:position.x,cy:position.y,r:13}));
       const label = svgEl("text", {x:position.x,y:position.y+4,"text-anchor":"middle",class:"map-node-mark"});
@@ -426,6 +557,7 @@
       mapNext.append(item);
     });
     renderMapInk();
+    scheduleMapFocus();
   }
   function svgEventPoint(event) {
     const matrix = mapSvg.getScreenCTM();
@@ -444,6 +576,7 @@
       $("#player-name").textContent = "战士";
       $("#seed").textContent = "SEED —";
       $("#character-status").replaceChildren(el("div", "empty-status", "尚未踏入尖塔"), el("span", "empty-status-note", "输入 new ironclad 开始"));
+      syncAllyTargetState(s);
       $("#relic-count").textContent = "—";
       $("#relics").replaceChildren(el("span", "muted", "旅程开始后显示"));
       $("#potions").replaceChildren(el("span", "muted", "—"));
@@ -492,6 +625,7 @@
       status.append(powerList);
     }
     $("#character-status").replaceChildren(status);
+    syncAllyTargetState(s);
 
     const relics = Array.isArray(player.relics) ? player.relics : [];
     $("#relic-count").textContent = String(relics.length);
@@ -528,11 +662,21 @@
     }
     if (!enemies.length) return;
     const list = el("div", "enemies");
-    enemies.forEach((enemy) => {
-      const unit = el("article", "enemy");
+    enemies.forEach((enemy, enemyPosition) => {
+      const enemyIndex = enemy && enemy.index !== undefined && enemy.index !== null
+        ? String(enemy.index) : String(enemyPosition + 1);
+      const canTargetEnemy = Boolean(targetingCard && targetingCard.targetType === "AnyEnemy" && !s.busy && !submitting);
+      const unit = el("article", "enemy" + (canTargetEnemy ? " targetable" : ""));
+      if (canTargetEnemy) {
+        unit.dataset.targetIndex = enemyIndex;
+        unit.setAttribute("role", "button");
+        unit.setAttribute("tabindex", "0");
+        unit.setAttribute("aria-label", "选择敌人 " + enemyIndex + "：" + value(enemy.name, "敌人"));
+        unit.title = "点击选择此敌人作为目标";
+      }
       const top = el("div", "enemy-top");
       const name = el("div", "enemy-name");
-      name.append(el("span", "index", String(enemy.index || "—").padStart(2, "0")), document.createTextNode(value(enemy.name, "敌人")));
+      name.append(el("span", "index", enemyIndex.padStart(2, "0")), document.createTextNode(value(enemy.name, "敌人")));
       top.append(name);
       const block = Number(enemy.block) > 0 ? " · 格挡 " + enemy.block : "";
       top.append(el("span", "enemy-hp", "HP " + value(enemy.hp, "—") + " / " + value(enemy.maxHp, "—") + block));
@@ -581,8 +725,22 @@
     });
     encounter.append(list);
   }
-  function cardRow(card) {
-    const row = el("div", "card-row");
+  function cardRow(card, s) {
+    const inCombat = s && s.phase === "combat";
+    const needsTarget = cardNeedsTarget(card);
+    const interactive = inCombat && connected && !s.busy && !submitting;
+    const selected = Boolean(targetingCard && Number(card.index) === targetingCard.index);
+    const row = el(inCombat ? "button" : "div", "card-row" + (selected ? " selected" : ""));
+    if (inCombat) {
+      row.type = "button";
+      row.disabled = !interactive;
+      row.dataset.cardIndex = String(card.index);
+      row.dataset.targetType = cardTargetType(card);
+      row.setAttribute("aria-label", value(card.name, "卡牌") + (needsTarget ? "，点击后选择目标" : "，点击出牌"));
+      row.title = interactive
+        ? (needsTarget ? "点击卡牌后选择目标" : "点击立即出牌；也可在命令框输入 play " + value(card.index, ""))
+        : "等待规则结算完成";
+    }
     row.append(el("span", "card-index", String(card.index || "—").padStart(2, "0")));
     row.append(el("span", "card-cost", value(card.cost, "—")));
     const details = el("div", "card-details");
@@ -600,9 +758,12 @@
     const cards = Array.isArray(s.hand) ? s.hand : [];
     hand.hidden = cards.length === 0;
     if (!cards.length) return;
-    hand.append(sectionHeading("手牌", cards.length + " 张 · play 手牌编号"));
+    const handHint = targetingCard
+      ? (targetingCard.targetType === "AnyAlly" ? "点击战士选择目标" : "点击敌人选择目标")
+      : s.phase === "combat" ? "点击卡牌出牌" : "play 手牌编号";
+    hand.append(sectionHeading("手牌", cards.length + " 张 · " + handHint));
     const list = el("div", "card-list");
-    cards.forEach((card) => list.append(cardRow(card)));
+    cards.forEach((card) => list.append(cardRow(card, s)));
     hand.append(list);
   }
   function renderChoices(s) {
@@ -722,6 +883,7 @@
     validateSnapshot(s);
     const mapWasOpen = mapOpen;
     state = s;
+    syncTargeting(s);
     connected = true;
     retryCount = 0;
     if (retryTimer) { window.clearTimeout(retryTimer); retryTimer = 0; }
@@ -738,7 +900,7 @@
     [encounter, hand, choice, $("#character-status"), $("#relics"), $("#potions")].forEach(animateState);
     syncInput();
     if (includeMessages !== false && Array.isArray(s.messages) && s.messages.length) addEntry(s.messages, s.phase === "error");
-    if (!mapWasOpen && mapOpen) mapCloseButton.focus();
+    if (!mapWasOpen && mapOpen) scheduleMapFocus(true);
   }
   async function fetchState(quiet) {
     try {
@@ -779,6 +941,14 @@
       selectionDraftKey = "";
       selectionDraftIndices = new Set();
     }
+    if (targetingCard && verb !== "play") {
+      targetingCard = null;
+      if (state) {
+        renderEncounter(state);
+        renderHand(state);
+        updateStatus(state);
+      }
+    }
     if (verb === "new" || verb === "continue") {
       mapOpen = false;
       mapAutoKey = "";
@@ -796,6 +966,9 @@
     if (state) {
       renderMap(state);
       renderChoices(state);
+      renderEncounter(state);
+      renderHand(state);
+      updateStatus(state);
     }
     syncInput();
     try {
@@ -812,6 +985,7 @@
         if (!connected) scheduleRetry();
         return;
       }
+      if (verb === "play") targetingCard = null;
       if (verb === "map") {
         mapOpen = true;
         mapSuppressedKey = "";
@@ -819,6 +993,17 @@
       }
       const isRestSite = body.phase === "RestSite" || body.phase === "RestSiteRoom";
       const isEventRoom = body.phase === "Event" || body.phase === "EventRoom";
+      const isShopRoom = body.phase === "Shop" || body.phase === "MerchantRoom";
+      const leaveShop = verb === "proceed" && isShopRoom && body.canLeave
+        && Array.isArray(body.routes) && body.routes.length > 0;
+      if (leaveShop) {
+        // NMerchantRoom's original Proceed button opens the map while the
+        // merchant room remains the current room. Treat this as an explicit
+        // map request so the shop action list does not immediately close it.
+        mapOpen = true;
+        mapSuppressedKey = "";
+        mapManualKey = mapContext(body);
+      }
       if (verb === "move" && isEventRoom) {
         // A route click must never leave the full-screen map above a newly
         // entered event, even if a stale/manual map key survived the click.
@@ -836,7 +1021,8 @@
         mapSuppressedKey = "";
         mapChoiceContext = "";
       }
-      const routeMapReplacesText = verb === "map" || (verb === "proceed" && body.canLeave && Array.isArray(body.routes) && body.routes.length > 0);
+      const routeMapReplacesText = verb === "map" || leaveShop
+        || (verb === "proceed" && body.canLeave && Array.isArray(body.routes) && body.routes.length > 0);
       applySnapshot(body, routeMapReplacesText ? false : undefined);
     } catch (error) {
       connected = false;
@@ -849,9 +1035,15 @@
       if (state) {
         renderMap(state);
         renderChoices(state);
+        renderEncounter(state);
+        renderHand(state);
+        updateStatus(state);
       }
       syncInput();
-      if (connected) (mapView.hidden ? input : mapCloseButton).focus();
+      if (connected) {
+        if (mapView.hidden) input.focus();
+        else scheduleMapFocus(true);
+      }
     }
   }
   function completeCommand() {
@@ -872,6 +1064,9 @@
     input.setSelectionRange(input.value.length, input.value.length);
     syncInput();
   }
+  mapZoomOutButton.addEventListener("click", () => setMapZoom(mapZoom - mapZoomStep));
+  mapZoomResetButton.addEventListener("click", () => setMapZoom(1));
+  mapZoomInButton.addEventListener("click", () => setMapZoom(mapZoom + mapZoomStep));
   mapDrawButton.addEventListener("click", () => setMapTool(mapTool === "draw" ? "none" : "draw"));
   mapEraseButton.addEventListener("click", () => setMapTool(mapTool === "erase" ? "none" : "erase"));
   mapClearButton.addEventListener("click", () => {
@@ -884,6 +1079,7 @@
     mapOpen = false;
     mapSuppressedKey = state ? mapContext(state) : "";
     mapManualKey = "";
+    mapFocusKey = "";
     mapView.hidden = true;
     setMapTool("none");
     renderChoices(state || {});
@@ -893,6 +1089,21 @@
   });
   document.addEventListener("keydown", (event) => {
     if (mapView.hidden) return;
+    if (event.key === "+" || (event.key === "=" && event.shiftKey)) {
+      event.preventDefault();
+      setMapZoom(mapZoom + mapZoomStep);
+      return;
+    }
+    if (event.key === "-") {
+      event.preventDefault();
+      setMapZoom(mapZoom - mapZoomStep);
+      return;
+    }
+    if (event.key === "0") {
+      event.preventDefault();
+      setMapZoom(1);
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       mapCloseButton.click();
@@ -971,6 +1182,64 @@
     mapCloseButton.click();
     send(command);
   });
+  function chooseCard(cardIndex) {
+    if (!state || state.phase !== "combat" || state.busy || submitting) return;
+    const index = Number(cardIndex);
+    const card = Array.isArray(state.hand) ? state.hand.find((item) => Number(item.index) === index) : null;
+    if (!card) return;
+    if (cardNeedsTarget(card)) {
+      if (targetingCard && targetingCard.index === index) {
+        targetingCard = null;
+      } else {
+        targetingCard = {index, targetType: cardTargetType(card)};
+      }
+      renderEncounter(state);
+      renderHand(state);
+      updateStatus(state);
+      return;
+    }
+    targetingCard = null;
+    send("play " + index);
+  }
+  function chooseEnemyTarget(targetIndex) {
+    if (!targetingCard || targetingCard.targetType !== "AnyEnemy" || !state || state.phase !== "combat" || state.busy || submitting) return;
+    const index = Number(targetIndex);
+    if (!Number.isInteger(index)) return;
+    send("play " + targetingCard.index + " " + index);
+  }
+  hand.addEventListener("click", (event) => {
+    const button = event.target.closest && event.target.closest("button[data-card-index]");
+    if (!button || button.disabled) return;
+    chooseCard(button.dataset.cardIndex);
+  });
+  encounter.addEventListener("click", (event) => {
+    const target = event.target.closest && event.target.closest("[data-target-index]");
+    if (!target || !encounter.contains(target)) return;
+    chooseEnemyTarget(target.dataset.targetIndex);
+  });
+  encounter.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const target = event.target.closest && event.target.closest("[data-target-index]");
+    if (!target || !encounter.contains(target)) return;
+    event.preventDefault();
+    chooseEnemyTarget(target.dataset.targetIndex);
+  });
+  $("#character-status").addEventListener("click", (event) => {
+    const target = event.target.closest && event.target.closest("#character-status[data-target-index]");
+    if (!target || target !== $("#character-status")) return;
+    if (targetingCard && targetingCard.targetType === "AnyAlly") {
+      send("play " + targetingCard.index + " " + target.dataset.targetIndex);
+    }
+  });
+  $("#character-status").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const target = event.target.closest && event.target.closest("#character-status[data-target-index]");
+    if (!target || target !== $("#character-status")) return;
+    event.preventDefault();
+    if (targetingCard && targetingCard.targetType === "AnyAlly") {
+      send("play " + targetingCard.index + " " + target.dataset.targetIndex);
+    }
+  });
   choice.addEventListener("click", (event) => {
     const button = event.target.closest && event.target.closest("button[data-command]");
     if (!button || button.disabled || submitting) return;
@@ -1043,6 +1312,7 @@
   commandLog.open = commandLogDesktop.matches;
   commandLogDesktop.addEventListener("change", (event) => { commandLog.open = event.matches; });
   renderCommandHistory();
+  updateMapZoomUi();
   syncInput();
   fetchState(true);
 })();

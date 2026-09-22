@@ -445,7 +445,7 @@ rg -n 'ShowScreen|RelicsSelected|FromChooseABundleScreen' .cache/source
 - 排查地图节点间歇性无法进入的问题，发现最上层手绘笔迹默认响应鼠标，覆盖节点时会挡住路线点击。笔迹保持视觉上层，普通模式改为鼠标穿透，仅擦除模式接收笔迹点击。隔离的 Chrome/TestMode 内存会话中，在可达战斗节点上画线、关闭手绘工具再点该节点，实际进入战斗；临时服务已关闭，未触碰用户当前游戏会话。
 - 修复房间入口自动被地图覆盖：运行时 `CanLeave()` 对未额外限制的房间（含商店）返回 true，网页此前把可离店条件误作自动开图条件；现在休息处仍有原版营火选项或商店仍有商品选项时，都抑制自动全屏地图，先显示房间交互，手动 `map` 仍能打开地图，并兼容 `RestSiteRoom` 阶段名。隔离 Chrome/TestMode 内存会话按固定种子从地图点击进入商店和休息处，分别确认商品、营火行动/休息/锻造可见且没有全屏地图覆盖；临时服务和标签页已关闭，未触碰用户当前会话。`node --check web/app.js` 与 `git diff --check` 通过。
 - 宝箱房间进入时，快照现在提供原版 `open` 对应的“开启宝箱”网页按钮；开启后继续显示原版遗物候选和跳过选项。命令历史面板暂时从布局隐藏，当前标签页记录仍保留在 `sessionStorage`，命令框继续可用。
-- 修复地图与问号事件的前端状态切换：`Event/EventRoom` 在有原版选项、或仍未完成结算时强制收起自动地图和已打开的地图覆盖层，避免问号事件选项被地图盖住而看起来像被跳过；事件完成后同一地点会自动重新打开地图。路线清单新增“查看地图”按钮，命令框仍可输入 `map`；显式打开地图时保留覆盖层，关闭后仍能看到房间文本和选项。
+- 修复地图与问号事件的前端状态切换：`Event/EventRoom` 在有原版选项、或仍未完成结算时强制收起自动地图和已打开的地图覆盖层，避免问号事件选项被地图盖住而看起来像被跳过；事件完成后先保留事件结果和路线清单，点击“查看地图”或路线按钮后再导航。路线清单新增“查看地图”按钮，命令框仍可输入 `map`；显式打开地图时保留覆盖层，关闭后仍能看到房间文本和选项。
 - 检查事件动态文本：原版 `.cache/source/MegaCrit.Sts2.Core.Models.Events/Wellspring.cs` 的 `CanonicalVars` 明确定义 `BatheCurses=1`，`Bathe()` 用该变量添加 1 张愧疚；此前适配层只调用 `Text(o.Description)`，没有注入 `eventModel.DynamicVars`，所以网页显示了字面量 `[BatheCurses]`。`runtime/Main.cs` 现保留 `EventOption` 构造时的角色详情/多人变量，并按原版 `NEventOptionButton._Ready` 在显示标题/说明前注入事件动态变量；固定 `WEBTEST` 房间流程确认“仔细翻找”显示“失去14点生命，获得天选芝士。”，不含 `{Damage}` 占位符。
 - 动态文本修复后，最新 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers`、`python3 tests/room_flow_smoke.py --seed WEBTEST`、`node --check web/app.js`、`git diff --check` 均通过；其它 smoke 使用前一轮交互补丁的结果，存档与幕首 smoke 未在本轮最新补丁后重跑。
 - 最新 `runtime/Main.cs` / Godot Mono assembly SHA-256：`38aa34ea28e0cd733b56577a305fc95cfdaf6de46d7d7ba73a10a96e7700cd93` / `12dfc790f98e9e10386a5b268ca453d64d5d751c19e83000cafa09b412188dfd`。原版来源边界、TestMode 差异、Build 归属及完整性限制仍按 `docs/engine-coverage.md` 和 `docs/sources.md`。
@@ -495,3 +495,71 @@ rg -n 'ShowScreen|RelicsSelected|FromChooseABundleScreen' .cache/source
 本轮重新构建并通过 `room_flow_smoke`、`unknown_event_smoke`、`node --check web/app.js`、Python 编译检查和 `git diff --check`。普通浏览器点击回归仍受当前环境没有浏览器控制面的限制。
 
 本轮最终 `runtime/Main.cs` / Godot Mono assembly SHA-256 为 `5a1fedf53d5ea44ccb17b47f8d6829cbd3d515a6f196c586c68b64728850866a` / `01b6a43e99f139b127eb8611d25bb26328f249f211cdb35db26f828eaab114f7`。
+
+## 24. 地图点击后的房间过渡屏障（2026-09-22）
+
+用户实测问号和休息处仍有“点击后不显示文本，直接回到地图”的情况。检查原版调用链后确认两类房间共用一个入口时序问题：`VoteForMapCoordAction` 只登记地图投票，原版同步器再排队 `MoveToMapCoordAction`；后者通过 `TaskHelper.RunSafely` 启动 `RunManager.EnterMapCoord()`，自己的 `GameAction` 会先结束。若桥接层立即发布快照，网页可能收到目标坐标已变化但目标房间尚未进入的中间状态，旧路线图就会继续显示。
+
+现已修复：
+
+- `runtime/Main.cs` 的 `move` 记录目标 `MapCoord` 和源房间；`Settle()` 等待目标坐标切换、源房间退出、目标房间进入后才发布快照。动作失败时清除等待状态，避免污染后续旅程。
+- `Settle()` 同时等待休息处在原版选项生成前的空选项过渡帧；`restState` 继续用于网页显示初始化和行动完成状态。
+- 原版规则和入口未在网页层重造，仍由 `MapSelectionSynchronizer`、`MoveToMapCoordAction`、`RunManager.EnterMapCoord` 和房间自身负责。
+
+本轮重新构建：`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers`，0 warning、0 error。以下检查均通过：
+
+- `python3 tests/engine_smoke.py --seed WEBTEST`
+- `python3 tests/room_flow_smoke.py --seed WEBTEST`
+- `python3 tests/unknown_event_smoke.py --seed BOSSFLOW`
+- `node --check web/app.js`
+- Python 编译检查与 `git diff --check`
+
+本轮最终 `runtime/Main.cs` / Godot Mono assembly SHA-256 为 `0190b793e23036996ddf048cb072f31eccf462b5a5cafd86065342caf3b8f593` / `89992d0417f8136d5d384f3019be7eb3894088622b36fff083026cfd02615701`。当前环境没有浏览器控制面，因此未声称完成真实网页点击目视回归；后续若仍出现问题，应保留点击后的第一份快照和命令响应，区分服务端过渡屏障与浏览器覆盖层状态。
+
+## 25. 商店离店动作（2026-09-22）
+
+原版 `.cache/source/MegaCrit.Sts2.Core.Nodes.Rooms/NMerchantRoom.cs` 的 Proceed 按钮调用 `HideScreen()`，由 `NMapScreen.Instance.Open()` 打开地图。终端现在在商店快照的 `actions` 中提供“离开商店”（底层命令 `proceed`）；该命令继续调用原版 `RunManager.ProceedFromTerminalRewardsScreen()`，网页收到商店快照后将路线图作为显式地图请求打开，商品仍保留在当前房间状态中。
+
+`room_flow_smoke` 新增了商店离店动作和 `proceed` 路线回归；最新构建 0 warning、0 error，`room_flow_smoke`、`engine_smoke`、`unknown_event_smoke`、`node --check web/app.js` 和 `git diff --check` 均通过。最新 `runtime/Main.cs` / Godot Mono assembly SHA-256 为 `cf139407ecf700bda62da84fa8d2a040b3d59af7ead5a81eb3eb54d7d98aa578` / `24e1f7ee81717cb9bea5976f93427ab3512a6fe47eed1ef5c22d9ebc0787f22d`。当前环境没有浏览器控制面，未做真实网页点按目视回归。
+
+## 26. 战斗手牌点击入口（2026-09-22）
+
+网页战斗手牌现在可以直接点击：无目标卡牌提交 `play 手牌编号`；`AnyEnemy` 卡牌点击后高亮原版快照中的敌方单位，选择敌人后提交 `play 手牌编号 敌人编号`；`AnyAlly` 卡牌点击后高亮角色状态，选择战士后提交 `play 手牌编号 1`。这些只是内置命令的快捷入口，实际目标合法性、能量和卡牌效果仍由 `runtime/Main.cs` 的原版 `CardModel.CanPlay/IsValidTarget` 路径处理，命令框继续可用。
+
+本轮只改网页层，没有重新编译 DLL；`node --check web/app.js` 与 `git diff --check` 通过。当前环境没有浏览器控制面，未做真实鼠标点按目视验收；待有浏览器控制面时应在固定首战中分别点击无目标攻击/防御、敌方目标卡和角色目标卡，并检查失败命令不会绕过原版校验。
+
+## 27. 启动提示与手牌间距（2026-09-22）
+
+网页初始连接时不再把“终端已就绪 / 规则来源 / 验证阶段”说明写入主规则日志；未开始旅程时仍保留欢迎页和输入提示，`help` 与 `new ironclad` 的实际命令提示不变。`continue` 成功后的“已恢复战士旅程”属于存档状态反馈，继续保留。
+
+战斗手牌仍为双列，但提高卡牌最小高度、上下内边距、列距和行距，并增大中文卡名与说明行距；标题和说明现在共用同一内容列，且覆盖全局 `button span` 的提交按钮左边距，避免可点击卡牌标题相对描述发生横向偏移。桌面手牌区域上限同步放宽，窄屏使用较小但仍有间距的版本，避免四张起始牌挤在一块。网页样式链接增加版本参数，确保旧 CSS 缓存不会继续覆盖修正。
+
+本轮重新构建：`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers`，0 warning、0 error。以下检查通过：
+
+- `python3 tests/engine_smoke.py --seed WEBTEST`
+- `python3 tests/room_flow_smoke.py --seed WEBTEST`
+- `python3 tests/unknown_event_smoke.py --seed BOSSFLOW`
+- `node --check web/app.js`
+- `git diff --check`
+
+本轮最终 `runtime/Main.cs` / Godot Mono assembly SHA-256 为 `0e7b8c916a5fd10c58aa78bfbd3bf90bdbfe6aeb0256a0abb29e8ca675c0b594` / `bbe5c59ff6c4841befd8f9ef6a36c1dba06433079ea9a5f5d62151a9b23ebae6`。当前环境没有浏览器控制面，未做本轮真实网页视觉回归。
+
+## 28. 地图缩放和当前节点定位（2026-09-22）
+
+地图覆盖层增加缩小、重置、放大控件，缩放范围为 75%–250%，步进 25%；地图打开时也可使用键盘 `+`、`-` 和 `0`。缩放仅改变网页地图 SVG 的显示尺寸，原版节点坐标、连接和路线选择仍来自快照，手绘笔迹继续使用原始地图坐标保存。
+
+地图打开、换幕、进入新节点或改变缩放后，网页会自动把快照中的 `map.current` 节点滚动到视区中央，只调整视角，不触发节点点击或夺取节点焦点。地图内容在可用空间内保持居中；地图保留滚轮、触屏滚动和缩放后的原生滚动条，不再提供自定义拖拽平移。地图画布及 SVG 元素禁止文本选择和原生拖拽，轻点仍可点击可达节点执行 `move`。
+
+本轮只改网页层；`node --check web/app.js`、HTML ID 完整性检查和 `git diff --check` 通过。当前环境没有浏览器控制面，未声称完成真实浏览器视觉回归。
+
+## 29. 事件卡牌变化结果（2026-09-22）
+
+用户反馈问号事件选择变牌后没有看到实际结果，网页很快切到地图。检查原版调用链后确认，`EventSynchronizer.ChooseOptionForEvent()` 会把 `EventOption.Chosen()` 加入待处理任务；原版 `CardCmd.TransformTo*()` 在当前地图点历史的 `PlayerMapPointHistoryEntry.CardsTransformed` 中记录 `CardTransformationHistoryEntry.OriginalCard/FinalCard`。此前终端只发布事件描述，没有把这份原版历史呈现出来。
+
+现已修复：
+
+- `runtime/Main.cs` 在原版事件任务结算后读取当前地图点的 `CardsTransformed` 增量，使用原版 `ModelDb` 卡牌标题和升级等级显示“原版变化结果：原卡 → 新卡”；按历史对象游标去重，不重造随机结果。
+- `web/app.js` 识别 `eventState.finished=true` 的已完成事件，保留事件结果与路线清单，不自动打开地图覆盖结果；点击“查看地图”、路线或手动输入 `map` 后才打开/导航。
+- 更新 `docs/interface.md`、`docs/engine-coverage.md` 和本交接记录，明确事件完成后的导航行为和原版历史依据。
+
+本轮 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 通过，0 warning、0 error；`node --check web/app.js` 与 `git diff --check` 通过。当前 `runtime/Main.cs` / Godot Mono assembly SHA-256 为 `1fbe8097807f3c7144b7fef8deab2e9a5437c6d4899be31e613f863cf8d52ffd` / `33f30ce35a19c9e6d30091dd16849433aeba03b8cec921f6ded66d095e6fc300`。当前环境没有浏览器控制面，未做真实网页点击目视回归；未据此宣称全部事件或完整玩法 1:1。

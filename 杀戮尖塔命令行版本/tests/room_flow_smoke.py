@@ -123,6 +123,9 @@ def main() -> int:
                 require(merchant_options and all(option.get("command") == f"buy {option['index']}"
                                                   for option in merchant_options),
                         "Merchant snapshot did not expose built-in buy commands for its entries")
+                require(any(action.get("command") == "proceed" and action.get("label") == "离开商店"
+                            for action in state.get("actions", [])),
+                        "Merchant snapshot did not expose the original leave-shop action")
                 removal = next((option for option in merchant_options
                                 if option.get("id") == "CARD_REMOVAL" and not option.get("disabled")), None)
                 if removal is not None:
@@ -157,7 +160,11 @@ def main() -> int:
                 stock = host.command("shop").get("messages", [])
                 require(any(line.startswith(f"{index}. ") and "已售罄" in line for line in stock),
                         f"Purchased merchant entry {name} remained stocked")
-                room_checks["Shop"] = {"bought": name, "cost": cost, "remaining_gold": state["player"]["gold"]}
+                state = host.command("proceed")
+                require(state.get("phase") == "Shop" and state.get("canLeave") and state.get("routes"),
+                        "Leaving the original merchant did not open the available map routes")
+                room_checks["Shop"] = {"bought": name, "cost": cost, "remaining_gold": state["player"]["gold"],
+                                        "leave_action": True}
 
             elif room == "Event" and not state.get("canLeave"):
                 options = [option for option in state.get("options", []) if not option.get("disabled")]

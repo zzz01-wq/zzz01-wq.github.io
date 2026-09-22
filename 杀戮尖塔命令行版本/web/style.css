@@ -52,7 +52,10 @@ body.map-is-open{overflow:hidden}
 .map-tools button[aria-pressed="true"]{border-color:#95634c;background:#34251e;color:#f0c09e}
 .map-canvas{display:flex;flex:1 1 auto;min-height:0;align-items:flex-start;justify-content:flex-start;overflow:auto;overscroll-behavior:contain;background:radial-gradient(ellipse at 50% 55%,rgba(112,77,54,.09),transparent 70%);scrollbar-width:thin;scrollbar-color:#494138 transparent}
 .map-canvas:focus-visible{outline:1px solid #6b5043;outline-offset:-2px}
+.map-canvas,.map-canvas *{user-select:none;-webkit-user-select:none;-webkit-user-drag:none}
 #map-svg{display:block;flex:0 0 auto;width:100%;max-width:980px;min-width:620px;height:auto;margin-inline:auto;overflow:visible;touch-action:pan-x pan-y}
+.map-canvas[data-zoomed="true"] #map-svg{max-width:none;min-width:0;margin-inline:auto}
+.map-zoom-label{display:inline-flex;align-items:center;justify-content:center;min-width:42px;padding:5px 3px;color:var(--muted);font:11px var(--mono);letter-spacing:0}
 .map-canvas[data-tool="draw"] #map-svg{cursor:crosshair;touch-action:none}
 .map-row-guide{stroke:#302c27;stroke-width:1;stroke-dasharray:2 7;vector-effect:non-scaling-stroke}
 .map-link{fill:none;stroke:#51483f;stroke-width:1.5;opacity:.56;vector-effect:non-scaling-stroke}
@@ -166,5 +169,41 @@ button.map-route-item:hover:not(:disabled){border-color:#95634c;background:#3425
 button.map-route-item:disabled{cursor:not-allowed}
 .map-node[role="button"]{cursor:pointer}
 .map-node[role="button"]:focus-visible circle:first-of-type{stroke:#efb28d;stroke-width:3}
+.map-node.current:focus-visible circle:first-of-type{stroke:#f6c6a2;stroke-width:3}
 .map-node.route-preview circle:first-of-type{opacity:.72;stroke-dasharray:2 2}
 @media(max-width:700px){button.option .option-description{font-size:12px}}
+
+/* Combat cards and targets are direct controls; the command line remains a fallback. */
+button.card-row{width:100%;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);font:inherit;text-align:left;white-space:normal;cursor:pointer}
+button.card-row span{margin-left:0}
+button.card-row:hover:not(:disabled){background:#211e1a;color:var(--text)}
+button.card-row.selected{background:#2a221d;box-shadow:inset 2px 0 #d6a17e}
+button.card-row:focus-visible{outline:1px solid #95634c;outline-offset:-2px}
+button.card-row:disabled{cursor:wait;opacity:.68}
+.enemy.targetable{cursor:pointer;outline:1px solid transparent;outline-offset:2px}
+.enemy.targetable:hover,.enemy.targetable:focus-visible{background:#2a221d;outline-color:#95634c}
+#character-status.targetable{cursor:pointer;outline:1px solid #95634c;outline-offset:4px}
+#character-status.targetable:hover,#character-status.targetable:focus-visible{background:#211e1a}
+
+/* Give the clickable hand enough breathing room for Chinese card names and text. */
+.hand{max-height:min(300px,34dvh);margin-top:10px;margin-bottom:14px;padding-top:11px}
+.hand .section-label{margin-bottom:8px;padding:5px 0}
+.card-list{column-gap:30px;row-gap:8px}
+.card-row{min-height:57px;align-items:start;gap:9px;padding:9px 6px}
+.card-row .card-index{font-size:12px;padding-top:2px}
+.card-cost{height:22px;width:22px;font-size:12px}
+.card-name{position:relative;display:block;height:20px;margin:0;padding:0!important;text-indent:0!important;font-size:14px;line-height:20px}
+.card-title{position:absolute;left:0;right:60px;top:0;display:block;margin:0;padding:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-name .card-type{position:absolute;right:0;top:0;margin:0;font-size:10px;line-height:20px}
+.card-description{font-size:12px;line-height:17px}
+.card-details{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;align-content:start;min-width:0;margin:0;padding:0}
+.card-details > .card-name,.card-details > .card-description{grid-column:1;margin-left:0!important;padding-left:0!important;text-indent:0!important}
+@media(max-width:700px){
+  .hand{max-height:min(220px,29dvh);margin-top:8px;margin-bottom:11px;padding-top:8px}
+  .hand .section-label{margin-bottom:6px;padding:4px 0}
+  .card-list{column-gap:16px;row-gap:5px}
+  .card-row{min-height:51px;gap:6px;padding:7px 3px}
+  .card-name{height:19px;font-size:13px;line-height:19px}
+  .card-name .card-type{line-height:19px}
+  .card-description{font-size:11px;line-height:16px}
+}
