@@ -8,7 +8,9 @@
   const submit = $("#submit");
   const prompt = $("#prompt");
   const working = $("#working");
-  const journal = $("#journal");
+  const intentDialog = $("#intent-dialog");
+  const intentDialogTitle = $("#intent-dialog-title");
+  const intentDialogContent = $("#intent-dialog-content");
   const scrollArea = $("#scroll-area");
   const commandLog = $("#command-log");
   const commandHistoryList = $("#command-history-list");
@@ -76,6 +78,8 @@
   let mapFocusFrame = 0;
   let selectionDraftKey = "";
   let selectionDraftIndices = new Set();
+  let eventResultContext = "";
+  let eventResults = [];
   // A targeted card is selected locally until the player chooses the target.
   // The engine remains authoritative: the eventual `play` command is still
   // validated by the original card target rules in the bridge.
@@ -156,16 +160,63 @@
   function value(x, fallback) {
     return x === undefined || x === null || x === "" ? (fallback || "") : String(x);
   }
-  function addEntry(messages, isError) {
-    const list = Array.isArray(messages) ? messages : [messages];
-    if (!list.some((x) => value(x).trim())) return;
-    const entry = el("div", "log-entry" + (isError ? " error" : ""));
-    list.forEach((message) => {
-      if (message !== null && message !== undefined && String(message) !== "") entry.append(el("div", "log-text", message));
+  function cardTypeLabel(type) {
+    return value(type).trim();
+  }
+  function setPrompt(text, isError = false) {
+    prompt.textContent = String(text || "");
+    prompt.classList.toggle("prompt-error", Boolean(isError));
+  }
+  function appendTextWithTooltips(element, text, tooltips) {
+    const source = String(text || "");
+    const usableTips = (Array.isArray(tooltips) ? tooltips : [])
+      .filter((tip) => tip && typeof tip.title === "string" && tip.title && typeof tip.description === "string" && tip.description)
+      .sort((a, b) => b.title.length - a.title.length);
+    let cursor = 0;
+    while (cursor < source.length) {
+      let nextIndex = -1;
+      let nextTip = null;
+      usableTips.forEach((tip) => {
+        const index = source.indexOf(tip.title, cursor);
+        if (index >= 0 && (nextIndex < 0 || index < nextIndex || (index === nextIndex && tip.title.length > nextTip.title.length))) {
+          nextIndex = index;
+          nextTip = tip;
+        }
+      });
+      if (nextIndex < 0 || !nextTip) {
+        element.append(document.createTextNode(source.slice(cursor)));
+        break;
+      }
+      if (nextIndex > cursor) element.append(document.createTextNode(source.slice(cursor, nextIndex)));
+      const keyword = el("span", "card-keyword", nextTip.title);
+      keyword.title = nextTip.title + "：" + nextTip.description;
+      keyword.setAttribute("aria-label", nextTip.title + "，" + nextTip.description);
+      element.append(keyword);
+      cursor = nextIndex + nextTip.title.length;
+    }
+  }
+  function updateEventResults(s) {
+    const isEventRoom = Boolean(s && s.eventState && typeof s.eventState === "object");
+    if (!isEventRoom) {
+      eventResultContext = "";
+      eventResults = [];
+      return [];
+    }
+    const current = s.map && s.map.current;
+    const context = [value(s.seed, "—"), value(s.act, 0), value(s.floor, 0),
+      current ? current.col + "," + current.row : "start"].join(":");
+    if (context !== eventResultContext) {
+      eventResultContext = context;
+      eventResults = [];
+    }
+    const prefix = "原版变化结果：";
+    (Array.isArray(s.messages) ? s.messages : []).forEach((message) => {
+      const text = String(message || "");
+      if (!text.startsWith(prefix)) return;
+      const result = text.slice(prefix.length).trim();
+      if (result && !eventResults.includes(result)) eventResults.push(result);
     });
-    journal.append(entry);
-    while (journal.childElementCount > 300) journal.firstElementChild.remove();
-    scrollArea.scrollTop = scrollArea.scrollHeight;
+    return [...eventResults];
   }
   function syncInput() {
     const verb = input.value.trim().split(/\s+/, 1)[0].toLowerCase();
@@ -698,10 +749,27 @@
           }
           row.title = [headline, description].filter(Boolean).join(" · ");
           row.setAttribute("aria-label", "意图：" + [headline, description].filter(Boolean).join("，"));
+          const help = el("button", "intent-help", "?");
+          help.type = "button";
+          help.dataset.intentTitle = headline || "敌人意图";
+          help.dataset.intentDescription = description || headline || visibleText;
+          help.title = "点击查看完整意图说明";
+          help.setAttribute("aria-label", "查看意图说明：" + (headline || visibleText));
+          row.append(help);
           unit.append(row);
         });
       } else if (enemy.intent) {
-        unit.append(el("div", "intent", "意图 · " + enemy.intent));
+        const row = el("div", "intent");
+        row.append(el("span", "intent-primary", "意图 · " + enemy.intent));
+        row.title = enemy.intent;
+        const help = el("button", "intent-help", "?");
+        help.type = "button";
+        help.dataset.intentTitle = "敌人意图";
+        help.dataset.intentDescription = enemy.intent;
+        help.title = "点击查看完整意图说明";
+        help.setAttribute("aria-label", "查看意图说明：" + enemy.intent);
+        row.append(help);
+        unit.append(row);
       }
       const powerDetails = Array.isArray(enemy.powerDetails) ? enemy.powerDetails : [];
       if (powerDetails.length) {
@@ -746,9 +814,11 @@
     const details = el("div", "card-details");
     const title = el("div", "card-name");
     title.append(el("span", "card-title", value(card.name, "卡牌")));
-    if (card.type) title.append(el("span", "card-type", card.type));
+    if (card.type) title.append(el("span", "card-type", cardTypeLabel(card.type)));
     const description = value(card.description).replace(/[\r\n]+/g, " · ").replace(/\s{2,}/g, " ").trim();
-    details.append(title, el("div", "card-description", description));
+    const cardDescription = el("div", "card-description");
+    appendTextWithTooltips(cardDescription, description, card.hoverTips);
+    details.append(title, cardDescription);
     row.title = [value(card.name, "卡牌"), value(card.cost, "—") + " 能量", value(card.description)].filter(Boolean).join(" · ");
     row.append(details);
     return row;
@@ -781,7 +851,8 @@
     const routes = Array.isArray(s.routes) ? s.routes : [];
     const showRouteList = routes.length > 0 && mapView.hidden;
     const eventText = value(s.eventText).trim();
-    choice.hidden = !options.length && !actions.length && !showRouteList && !eventText;
+    const eventCardResults = Array.isArray(s.eventCardResults) ? s.eventCardResults : [];
+    choice.hidden = !options.length && !actions.length && !showRouteList && !eventText && !eventCardResults.length;
     if (choice.hidden) return;
     if (options.length) {
       const optionHeading = (s.phase === "RestSite" || s.phase === "RestSiteRoom") ? "营火行动"
@@ -811,12 +882,17 @@
           }
         }
         row.append(el("span", "option-number", String(option.index || index + 1).padStart(2, "0")));
-        const detail = el("span", "option-details");
-        const title = el("b", "", value(option.name, "选项"));
+        const detail = el("div", "option-details");
+        const title = el("div", "option-title-row");
+        title.append(el("span", "option-name", value(option.name, "选项")));
+        if (option.type) title.append(el("span", "option-type", cardTypeLabel(option.type)));
         if (option.cost !== undefined && option.cost !== null) title.append(el("span", "option-cost", option.cost + " " + value(option.costLabel, "能量")));
         detail.append(title);
-        if (option.description) detail.append(el("span", "option-description", option.description));
-        if (option.type) detail.append(el("span", "option-type", option.type));
+        if (option.description) {
+          const description = el("span", "option-description");
+          appendTextWithTooltips(description, option.description, option.hoverTips);
+          detail.append(description);
+        }
         row.append(detail);
         list.append(row);
       });
@@ -824,8 +900,15 @@
       if (selection && Number(selection.max) > 1) {
         choice.append(el("div", "choice-selection-count", `已选 ${selectionDraftIndices.size} 张 · 本次需选 ${selection.min}–${selection.max} 张`));
       }
-    } else if (eventText) {
-      choice.append(sectionHeading("事件", phaseLabels[s.phase] || value(s.phase)), el("div", "event-text", eventText));
+    } else if (eventText || eventCardResults.length) {
+      choice.append(sectionHeading("事件", phaseLabels[s.phase] || value(s.phase)));
+      if (eventText) choice.append(el("div", "event-text", eventText));
+    }
+    if (eventCardResults.length) {
+      const results = el("div", "event-results");
+      results.append(sectionHeading("卡牌变化结果"));
+      eventCardResults.forEach((result) => results.append(el("div", "event-result", result)));
+      choice.append(results);
     }
     const hasMultiSelect = Boolean(selection && Number(selection.max) > 1);
     if (actions.length || hasMultiSelect) {
@@ -879,16 +962,18 @@
       choice.append(section);
     }
   }
-  function applySnapshot(s, includeMessages) {
+  function applySnapshot(s) {
     validateSnapshot(s);
     const mapWasOpen = mapOpen;
+    s.eventCardResults = updateEventResults(s);
     state = s;
     syncTargeting(s);
     connected = true;
     retryCount = 0;
     if (retryTimer) { window.clearTimeout(retryTimer); retryTimer = 0; }
     setConnection("online", "规则引擎在线");
-    prompt.textContent = value(s.prompt, "输入 help 查看命令");
+    const messages = Array.isArray(s.messages) ? s.messages.filter(Boolean) : [];
+    setPrompt(s.messageError && messages.length ? messages.join("\n") : value(s.prompt, "输入 help 查看命令"), Boolean(s.messageError && messages.length));
     working.hidden = !submitting;
     welcome.hidden = Boolean(s.player) || interactionStarted;
     syncMapVisibility(s);
@@ -899,7 +984,6 @@
     updateStatus(s);
     [encounter, hand, choice, $("#character-status"), $("#relics"), $("#potions")].forEach(animateState);
     syncInput();
-    if (includeMessages !== false && Array.isArray(s.messages) && s.messages.length) addEntry(s.messages, s.phase === "error");
     if (!mapWasOpen && mapOpen) scheduleMapFocus(true);
   }
   async function fetchState(quiet) {
@@ -907,13 +991,12 @@
       const response = await fetch("/api/state", {headers:{Accept:"application/json"}, cache:"no-store"});
       const body = await readJson(response);
       if (!response.ok || body.error) throw new Error(value(body.error, "无法读取游戏状态（HTTP " + response.status + "）"));
-      applySnapshot(body, state === null);
+      applySnapshot(body);
       if (!quiet) input.focus();
     } catch (error) {
       connected = false;
       setConnection("offline", "无法连接规则引擎");
-      prompt.textContent = "服务暂不可用。可使用顶部连接状态重试。";
-      if (!quiet) addEntry([error.message || "无法连接到规则引擎。"], true);
+      setPrompt("服务暂不可用。可使用顶部连接状态重试。", true);
       scheduleRetry();
     }
   }
@@ -921,14 +1004,14 @@
     if (!connected || submitting) return;
     const verb = command.split(/\s+/, 1)[0].toLowerCase();
     if (state && state.busy && !readOnlyWhileBusy.has(verb) && verb !== "clear") {
-      addEntry(["规则仍在结算。请等待状态更新，或输入 status 查看当前状态。"], true);
+      setPrompt("规则仍在结算。请等待状态更新，或输入 status 查看当前状态。", true);
       return;
     }
     if (command.toLowerCase() === "clear") {
       recordCommand(command);
       addHistory(command);
-      journal.replaceChildren();
       input.value = "";
+      setPrompt(value(state && state.prompt, "输入 help 查看命令"));
       syncInput();
       return;
     }
@@ -981,7 +1064,7 @@
       if (!response.ok || body.error) {
         connected = response.status < 500;
         setConnection(connected ? "warning" : "offline", connected ? "命令请求异常" : "服务暂不可用");
-        addEntry([value(body.error, "命令请求失败（HTTP " + response.status + "）")], true);
+        setPrompt(value(body.error, "命令请求失败（HTTP " + response.status + "）"), true);
         if (!connected) scheduleRetry();
         return;
       }
@@ -1021,13 +1104,11 @@
         mapSuppressedKey = "";
         mapChoiceContext = "";
       }
-      const routeMapReplacesText = verb === "map" || leaveShop
-        || (verb === "proceed" && body.canLeave && Array.isArray(body.routes) && body.routes.length > 0);
-      applySnapshot(body, routeMapReplacesText ? false : undefined);
+      applySnapshot(body);
     } catch (error) {
       connected = false;
       setConnection("offline", "连接中断");
-      addEntry([error.message || "命令请求连接中断；该命令可能已经执行。请使用 status 查看当前状态，前端不会自动重发命令。"], true);
+      setPrompt(error.message || "命令请求连接中断；该命令可能已经执行。请使用 status 查看当前状态，前端不会自动重发命令。", true);
       scheduleRetry();
     } finally {
       submitting = false;
@@ -1213,16 +1294,29 @@
     chooseCard(button.dataset.cardIndex);
   });
   encounter.addEventListener("click", (event) => {
+    const help = event.target.closest && event.target.closest(".intent-help");
+    if (help && encounter.contains(help)) {
+      event.stopPropagation();
+      intentDialogTitle.textContent = help.dataset.intentTitle || "敌人意图";
+      intentDialogContent.textContent = help.dataset.intentDescription || "暂无意图说明。";
+      if (!intentDialog.open) intentDialog.showModal();
+      return;
+    }
     const target = event.target.closest && event.target.closest("[data-target-index]");
     if (!target || !encounter.contains(target)) return;
     chooseEnemyTarget(target.dataset.targetIndex);
   });
   encounter.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
+    if (event.target.closest && event.target.closest(".intent-help")) return;
     const target = event.target.closest && event.target.closest("[data-target-index]");
     if (!target || !encounter.contains(target)) return;
     event.preventDefault();
     chooseEnemyTarget(target.dataset.targetIndex);
+  });
+  $("#intent-dialog-close").addEventListener("click", () => intentDialog.close());
+  intentDialog.addEventListener("click", (event) => {
+    if (event.target === intentDialog) intentDialog.close();
   });
   $("#character-status").addEventListener("click", (event) => {
     const target = event.target.closest && event.target.closest("#character-status[data-target-index]");

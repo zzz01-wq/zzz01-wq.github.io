@@ -44,6 +44,7 @@ public partial class Main : Node, ICardSelector
     private readonly List<Task> background = [];
     private readonly Queue<PendingChoice> pendingChoices = new();
     private readonly Stack<(RewardsSet set, TaskCompletionSource done)> rewardStack = new();
+    private bool messageError;
     private bool referencePackMounted;
     private CardReward? rewardCard;
     private TaskCompletionSource? rewardStageChoice;
@@ -122,14 +123,16 @@ public partial class Main : Node, ICardSelector
                 string? input = await Task.Run(System.Console.ReadLine);
                 if (input == null) break;
                 messages.Clear();
+                messageError = false;
                 try
                 {
                     await Dispatch(input.Trim());
                     await Settle();
                 }
-                catch (CommandError ex) { Say(ex.Message); }
+                catch (CommandError ex) { messageError = true; Say(ex.Message); }
                 catch (Exception ex)
                 {
+                    messageError = true;
                     bool readOnly = IsReadOnly(input);
                     if(!readOnly) failed = true;
                     System.Console.Error.WriteLine(ex);
@@ -140,7 +143,7 @@ public partial class Main : Node, ICardSelector
                 Publish();
             }
         }
-        catch (Exception ex) { System.Console.Error.WriteLine(ex); Say("初始化失败：" + ex.GetBaseException().Message); Publish(); }
+        catch (Exception ex) { System.Console.Error.WriteLine(ex); messageError = true; Say("初始化失败：" + ex.GetBaseException().Message); Publish(); }
         GetTree().Quit();
     }
 
@@ -1115,7 +1118,23 @@ public partial class Main : Node, ICardSelector
         if(run?.CurrentRoom is MerchantRoom)return "buy 编号购买商品 · proceed 离开商店 · move 编号也可直接前进 · shop 查看清单";
         return run==null?(SaveManager.Instance.HasRunSave?"continue 恢复存档 · abandon 删除存档":"new ironclad 开始旅程"):"map 查看路线 · move 编号前进";
     }
-    private object CardView(CardModel c,int i,string? command=null,bool multiSelect=false)=>new {index=i+1,id=c.Id.Entry,name=c.Title,cost=c.EnergyCost.GetWithModifiers(CostModifiers.All),description=Clean(c.GetDescriptionForPile(c.Pile?.Type??PileType.None)),type=c.Type.ToString(),targetType=c.TargetType.ToString(),command,multiSelect};
+    private static object[] CardHoverTips(CardModel card)
+    {
+        try
+        {
+            List<object> tips=[];
+            foreach(HoverTip tip in card.HoverTips.OfType<HoverTip>())
+            {
+                string title=Clean(tip.Title??"");
+                string description=Clean(tip.Description);
+                if(!string.IsNullOrWhiteSpace(title)&&!string.IsNullOrWhiteSpace(description))
+                    tips.Add(new {title,description});
+            }
+            return tips.ToArray();
+        }
+        catch(Exception) { return []; }
+    }
+    private object CardView(CardModel c,int i,string? command=null,bool multiSelect=false)=>new {index=i+1,id=c.Id.Entry,name=c.Title,cost=c.EnergyCost.GetWithModifiers(CostModifiers.All),description=Clean(c.GetDescriptionForPile(c.Pile?.Type??PileType.None)),type=Text(c.Type.ToLocString()),hoverTips=CardHoverTips(c),targetType=c.TargetType.ToString(),command,multiSelect};
     private object[] RewardCardOptions(CardReward reward)
     {
         List<CardModel> cards=reward.Cards.ToList();
@@ -1245,7 +1264,7 @@ public partial class Main : Node, ICardSelector
                 return new {index=i+1,name,hp=e.CurrentHp,maxHp=e.MaxHp,block=e.Block,powers,powerDetails,intent=string.Join(" · ",intents.Select(intent=>intent.label)),intents};
             }).ToArray();
             var snapshot=new {
-                prompt=Prompt(),messages=messages.ToArray(),phase=failed?"error":Won?"victory":Dead?"defeat":Choosing?"choice":Playing?"combat":run?.CurrentRoom?.RoomType.ToString()??"ready",engineMode=TestMode.IsOn?"TestMode/headless":"normal",hasRunSave=SaveManager.Instance.HasRunSave,
+                prompt=Prompt(),messages=messages.ToArray(),messageError,phase=failed?"error":Won?"victory":Dead?"defeat":Choosing?"choice":Playing?"combat":run?.CurrentRoom?.RoomType.ToString()??"ready",engineMode=TestMode.IsOn?"TestMode/headless":"normal",hasRunSave=SaveManager.Instance.HasRunSave,
                 seed,act=run==null?0:run.CurrentActIndex+1,actCount=run?.Acts.Count??0,floor=run?.TotalFloor??0,location=run==null?"旅程尚未开始":Text(run.Act.Title),
                 player=player==null?null:new {name="战士",hp=player.Creature.CurrentHp,maxHp=player.Creature.MaxHp,block=player.Creature.Block,gold=player.Gold,energy=pcs?.Energy??0,maxEnergy=pcs?.MaxEnergy??player.MaxEnergy,turn=pcs?.TurnNumber??0,deck=player.Deck.Cards.Count,draw=pcs?.DrawPile.Cards.Count??0,discard=pcs?.DiscardPile.Cards.Count??0,exhaust=pcs?.ExhaustPile.Cards.Count??0,powers=player.Creature.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(),relics=player.Relics.Select(r=>new{name=Text(r.Title),description=Text(r.DynamicDescription)}).ToArray(),potions=player.PotionSlots.Select(p=>p==null?"空槽":Text(p.Title)).ToArray()},
                 hand=pcs?.Hand.Cards.Select((card,index)=>CardView(card,index)).ToArray()??[],
@@ -1256,7 +1275,7 @@ public partial class Main : Node, ICardSelector
             };
             System.Console.WriteLine("@@SPIRE@@"+JsonSerializer.Serialize(snapshot));
         }
-        catch(Exception ex){System.Console.Error.WriteLine(ex);System.Console.WriteLine("@@SPIRE@@"+JsonSerializer.Serialize(new{phase="error",messages=new[]{"显示状态失败："+ex.Message},prompt="status 重试"}));}
+        catch(Exception ex){System.Console.Error.WriteLine(ex);System.Console.WriteLine("@@SPIRE@@"+JsonSerializer.Serialize(new{phase="error",messages=new[]{"显示状态失败："+ex.Message},messageError=true,prompt="status 重试"}));}
     }
     private static bool IsReadOnly(string input)
     {

@@ -1,16 +1,15 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#141312"><title>杀戮尖塔 II · 命令版</title><link rel="stylesheet" href="/style.css?v=20260922-event-result-1"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#141312"><title>杀戮尖塔 II · 命令版</title><link rel="stylesheet" href="/style.css?v=20260928-card-option-feedback-1"></head>
 <body>
-<header class="masthead"><div class="wordmark"><span class="mark" aria-hidden="true">Ⅱ</span><div>杀戮尖塔 <span class="roman">II</span><small>COMMAND EDITION</small></div></div><div class="edition">BUILD 23811903 <span class="separator">/</span> 非官方命令界面</div><div id="connection" class="connection" role="button" tabindex="0" aria-label="规则引擎连接状态" aria-disabled="true"><i></i><span>连接中</span></div></header>
+<header class="masthead"><div class="wordmark"><span class="mark" aria-hidden="true">Ⅱ</span><div>杀戮尖塔 <span class="roman">II</span></div></div><div class="edition">版本 23811903 <span class="separator">/</span> 非官方命令界面</div><div id="connection" class="connection" role="button" tabindex="0" aria-label="规则引擎连接状态" aria-disabled="true"><i></i><span>连接中</span></div></header>
 <main>
 <section class="workspace" aria-label="游戏命令终端">
-<div class="workspace-heading"><div><span class="eyebrow">THE ASCENT</span><h1 id="location">尖塔入口</h1></div><span id="stage" class="stage">等待启程</span></div>
+<div class="workspace-heading"><h1 id="location">尖塔入口</h1><span id="stage" class="stage">等待启程</span></div>
 <div id="encounter" class="encounter" aria-live="polite" hidden></div>
 <div class="terminal-body">
 <div id="scroll-area" class="scroll-area">
 <div id="welcome" class="welcome"><div class="tower" aria-hidden="true"><span>╱╲</span><span>│ ▴ │</span><span>╱│   │╲</span><span>│ ▴ ▴ │</span><span>╱│     │╲</span><span>│ ▴ ▴ ▴ │</span><span>╱│       │╲</span><span>▔▔▔▔▔▔▔▔▔▔▔</span></div><span class="eyebrow">以文字，踏入尖塔。</span><h2>每一步，由你下令。</h2><p>扮演战士，构筑卡组，直面尖塔。<br>在下方输入命令，开始你的旅程。</p><div class="start-line"><span>›</span><code>new ironclad</code><span class="enter-hint">↵ 开始</span></div><p class="small-note">原版规则引擎 · 中文命令终端 · 适配验证中</p></div>
-<div id="journal" class="journal" aria-live="polite" aria-relevant="additions"></div>
 <section id="map-view" class="map-view" role="dialog" aria-modal="true" aria-label="旅程地图" hidden>
 <div class="map-heading"><div><span class="eyebrow">ROUTE MAP</span><h2>旅程路线</h2></div><div class="map-tools" role="group" aria-label="路线查看和标注工具"><button id="map-zoom-out" type="button" title="缩小地图" aria-label="缩小地图">−</button><span id="map-zoom-label" class="map-zoom-label" aria-live="polite">100%</span><button id="map-zoom-reset" type="button" title="恢复地图默认大小" aria-label="恢复地图默认大小">重置</button><button id="map-zoom-in" type="button" title="放大地图" aria-label="放大地图">+</button><button id="map-draw" type="button" aria-pressed="false">手绘</button><button id="map-erase" type="button" aria-pressed="false">擦除</button><button id="map-clear" type="button">清除笔迹</button><button id="map-close" type="button" aria-label="收起地图">收起</button></div></div>
 <div class="map-canvas" role="region" tabindex="0" aria-label="可滚动查看完整路线图"><svg id="map-svg" role="img" aria-label="尖塔路线图"><g id="map-guides"></g><g id="map-links"></g><g id="map-nodes"></g><g id="map-ink"></g></svg></div>
@@ -36,5 +35,9 @@
 <div class="run-foot"><span id="seed">SEED —</span><span>终端 / 01</span></div>
 </aside>
 </main>
-<script src="/app.js?v=20260922-event-result-1" defer></script>
+<dialog id="intent-dialog" class="intent-dialog" aria-labelledby="intent-dialog-title">
+<div class="intent-dialog-heading"><div><span class="eyebrow">ENEMY INTENT</span><h2 id="intent-dialog-title">敌人意图</h2></div><button id="intent-dialog-close" class="intent-dialog-close" type="button" aria-label="关闭意图说明">×</button></div>
+<div id="intent-dialog-content" class="intent-dialog-content"></div>
+</dialog>
+<script src="/app.js?v=20260928-card-option-feedback-1" defer></script>
 </body></html>

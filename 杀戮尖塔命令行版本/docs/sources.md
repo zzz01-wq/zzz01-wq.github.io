@@ -44,6 +44,13 @@
 - `.cache/source/MegaCrit.Sts2.Core.Commands/CardCmd.cs` 的牌堆变牌路径在目标是玩家牌组时，将 `new CardTransformationHistoryEntry(original, replacement)` 写入 `runState.CurrentMapPointHistoryEntry.GetEntry(original.Owner.NetId).CardsTransformed`。
 - `.cache/source/MegaCrit.Sts2.Core.Runs.History/CardTransformationHistoryEntry.cs` 保存原版 `SerializableCard.OriginalCard` 与 `FinalCard`，其中包含卡牌 `ModelId` 和升级等级。终端用 `ModelDb.GetById<CardModel>()` 格式化标题，只展示原版历史中的实际结果，不在网页层随机或推断变牌结果。
 
+## 本机原版卡牌类型与特殊词条提示依据
+
+- `.cache/source/MegaCrit.Sts2.Core.Entities.Cards/CardTypeExtensions.cs` 的 `ToLocString()` 将 Attack、Skill、Power 等卡牌类型对应到原版 `gameplay_ui.CARD_TYPE.*`；运行时快照直接格式化该原版本地化，不在网页自造类型标签。
+- `.cache/source/MegaCrit.Sts2.Core.Models/CardModel.cs` 的 `HoverTips` 汇总卡牌自身、附魔、灾祸、动态重放、充能球、格挡和 `CardKeyword` 提示；关键词提示由 `.cache/source/MegaCrit.Sts2.Core.HoverTips/HoverTipFactory.cs` 及 `CardKeyword.GetTitle()/GetDescription()` 构造。
+- `.cache/source/MegaCrit.Sts2.Core.HoverTips/HoverTip.cs` 保留原版本地化标题和格式化说明；`static_hover_tips.json` 的 `REPLAY_STATIC` 与 `REPLAY_DYNAMIC` 分别提供简体中文“重放”标题及“将这张牌额外打出一次/Times 次”的说明。
+- `runtime/Main.cs` 将卡牌类型和 `HoverTips` 中的原版标题、说明放入快照；网页仅在卡牌描述中为与原版提示标题匹配的词条添加悬停说明，不自行编写规则文案。
+
 ## 本机原版怪物状态文本依据
 
 - `.cache/source/MegaCrit.Sts2.Core.Models/PowerModel.cs` 的 `HoverTips` 用 `SmartDescription`（缺省时用 `Description`），并加入 `Amount`、`DynamicVars`、施加者、目标和拥有者等原版变量后格式化说明；`GetDumbHoverTip()` 是不含智能动态说明的原版回退。
