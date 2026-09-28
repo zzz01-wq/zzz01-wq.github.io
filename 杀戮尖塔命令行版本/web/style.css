@@ -40,6 +40,8 @@
 .pile-metric span{display:block;font:11px var(--sans);color:var(--dim);white-space:nowrap}
 .pile-metric strong{display:block;margin-top:2px;font:14px var(--mono);font-weight:400;color:var(--muted)}
 .stats{margin-bottom:14px}
+.stats.has-stars{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media(max-width:1000px){.stats.has-stars .stat strong{font-size:18px}}
 .command-area{padding-top:12px}
 
 /* Original-node map with a local route-planning ink layer. */

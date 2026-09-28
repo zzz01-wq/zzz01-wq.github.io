@@ -804,7 +804,8 @@
     if (s.phase) parts.push(phaseLabels[s.phase] || String(s.phase));
     $("#stage").textContent = parts.join(" · ") || "旅程进行中";
     $("#player-name").textContent = value(player.name, "战士");
-    $("#player-class").textContent = player.character === "silent" ? "猎手" : "铁甲";
+    $("#player-class").textContent = player.character === "silent" ? "猎手"
+      : player.character === "regent" ? "储君" : "铁甲";
     $("#seed").textContent = "SEED " + value(s.seed, "—");
 
     const status = el("div", "character-readout");
@@ -824,6 +825,13 @@
     status.append(bar);
     const stats = el("div", "stats");
     stats.append(stat("格挡", player.block), stat("能量", value(player.energy, "—") + " / " + value(player.maxEnergy, "—")), stat("金币", player.gold));
+    if (player.showStarCounter && Number.isFinite(Number(player.stars))) {
+      stats.classList.add("has-stars");
+      const starCounter = stat(value(player.starTitle, "辉星"), player.stars);
+      starCounter.title = value(player.starDescription, "");
+      starCounter.setAttribute("aria-label", value(player.starTitle, "辉星") + "：" + value(player.stars, "0") + "。" + value(player.starDescription, ""));
+      stats.append(starCounter);
+    }
     status.append(stats);
     const piles = el("div", "piles");
     [["回合",player.turn],["卡组",player.deck],["抽牌",player.draw],["弃牌",player.discard],["消耗",player.exhaust]].forEach(([label,count]) => {

@@ -140,6 +140,14 @@
 - `.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect/NCharacterSelectButton.cs` 的 `Init()` 对未解锁角色使用 `CharacterSelectLockedIcon` 并显示锁头；聚焦时提示标题来自 `main_menu_ui.CHARACTER_SELECT.locked.title`，正文来自 `CharacterModel.GetUnlockText()`。`.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect/NCharacterSelectScreen.cs` 的 `SelectCharacter()` 在锁定分支把资料名设为“锁定”、显示通用角色解锁文本、`??/??` / `???` 属性和“未知遗物”，并禁用启程按钮；不会在角色资料内显示 `SILENT1_EPOCH.unlockInfo`、实际角色名、描述或真实遗物。时间线条件提示由 `.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.Timeline/NEpochSlot.cs` 按 Epoch 状态格式化。
 - `.cache/source/MegaCrit.Sts2.Core.Timeline.Epochs/NeowEpoch.cs` 的 `QueueUnlocks()` 将 `Silent1Epoch` 记为 `ObtainedNoSlot` 并建立其时间线扩展；`.cache/source/MegaCrit.Sts2.Core.Timeline/EpochModel.cs` 的 `QueueTimelineExpansion()` 通过原版 `SaveManager.UnlockSlot()` 写入扩展状态。`Silent1Epoch.QueueUnlocks()` 在揭示后设置 `Progress.PendingCharacterUnlock` 并写入其扩展。网页不加载原版 Timeline 场景，因此 `runtime/Main.cs` 只复用这些存档状态操作，不调用依赖 UI 单例的方法。
 
+## 本机原版储君与解锁链依据
+
+- `.cache/source/MegaCrit.Sts2.Core.Models.Characters/Regent.cs` 是储君原版角色模型：75 生命、99 金币、4 张 `StrikeRegent`、4 张 `DefendRegent`、`FallingStar`、`Venerate`，初始遗物 `DivineRight`，并设置 `ShouldAlwaysShowStarCounter=true`。角色名、起始牌和遗物名/描述来自原版本地化与模型，不由网页另写。
+- `.cache/source/MegaCrit.Sts2.Core.Saves.Managers/ProgressSaveManager.cs` 的 `PostRunUnlockCharacterEpochCheck()` 在标准对局结束时读取原版实际角色模型；角色为 `Silent` 时获得 `Regent1Epoch`。`runtime/localization/zhs/epochs.json` 中 `REGENT1_EPOCH.unlockInfo` 是“以静默猎手完成一局游戏来揭示这个历史节点”。结算胜负参数不会改变此角色链检查是否执行；新局资格与可揭示状态仍受原版 `GetRevealableEpochs()` 管理。
+- `.cache/source/MegaCrit.Sts2.Core.Timeline.Epochs/Regent1Epoch.cs` 的 `QueueUnlocks()` 设置 `Progress.PendingCharacterUnlock` 并沿 `GetTimelineExpansion()` 开放后续 Epoch 槽位。`UnlockState.Characters` 只在 `REGENT1_EPOCH` 揭示时加入 Regent；开局经 `Player.CreateForNewRun()` 使用角色模型的 HP、卡组与遗物。
+- `.cache/source/MegaCrit.Sts2.Core.Models.Relics/DivineRight.cs` 在进入 `CombatRoom` 后调用原版 `PlayerCmd.GainStars(3, owner)`；`.cache/source/MegaCrit.Sts2.Core.Entities.Players/PlayerCombatState.cs` 管理当前辉星与卡牌辉星费用；`.cache/source/MegaCrit.Sts2.Core.Nodes.Combat/NStarCounter.cs` 按 `ShouldAlwaysShowStarCounter` 或辉星大于零显示计数，悬浮说明来自 `static_hover_tips.STAR_COUNT`。网页只将此计数转成文字状态栏，不实现新的辉星规则。
+- Regent smoke 通过隔离存档验证铁甲战士→静默猎手→储君的揭示顺序、`REGENT1_EPOCH` 本地化条件、锁定状态、储君 75/99/10 开局与首战 3 辉星。该验证只覆盖角色接入和起始流程，不覆盖储君全卡池或完整玩法 1:1。
+
 ## 本机原版主菜单与单人模式层级依据
 
 - `.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.MainMenu/NMainMenu.cs` 的 `_Ready()` 连接原版主菜单的继续游戏、放弃当前游戏、单人模式、多人模式、百科大全、时间线、设置和退出按钮；`RefreshButtons()` 以 `SaveManager.Instance.HasRunSave` 控制继续/放弃按钮的可见与可用状态。时间线按钮仅在原版进度已有 Epoch 时显示。

@@ -344,14 +344,14 @@ public partial class Main : Node, ICardSelector
         if (cmd == "clear") return;
         if (cmd == "new")
         {
-            if (a.Length < 2) throw new CommandError("用法：new ironclad|silent [种子] [进阶0–10]");
+            if (a.Length < 2) throw new CommandError("用法：new ironclad|silent|regent [种子] [进阶0–10]");
             CharacterModel character = CharacterFromKey(a[1]);
             var unlocks = SaveManager.Instance.GenerateUnlockStateFromProgress();
             if (!unlocks.Characters.Any(unlocked => unlocked.Id == character.Id))
-                throw new CommandError($"{Text(character.Title)}尚未解锁。{Text(character.GetUnlockText())} {SilentUnlockRequirement()}");
+                throw new CommandError($"{Text(character.Title)}尚未解锁。{Text(character.GetUnlockText())} {CharacterUnlockRequirement(character)}");
             int asc=0;
             if(a.Length>3&&!int.TryParse(a[3],out asc)) throw new CommandError("进阶必须是 0–10 之间的整数。");
-            if (a.Length > 4 || asc < 0 || asc > 10) throw new CommandError("用法：new ironclad|silent [种子] [进阶0–10]");
+            if (a.Length > 4 || asc < 0 || asc > 10) throw new CommandError("用法：new ironclad|silent|regent [种子] [进阶0–10]");
             if (run != null && !failed && !Dead && !gameWon) throw new CommandError("已有进行中的旅程。输入 abandon 放弃后再开始。");
             if (run == null && HasPendingRunSave()) throw new CommandError("检测到可继续的存档。输入 continue 恢复，或输入 abandon 放弃本局（计为失败）后开始新旅程。");
             if (run != null) SaveManager.Instance.DeleteCurrentRun();
@@ -359,9 +359,15 @@ public partial class Main : Node, ICardSelector
         }
         if (cmd == "unlock")
         {
-            if (a.Length != 2 || !a[1].Equals("silent", StringComparison.OrdinalIgnoreCase))
-                throw new CommandError("用法：unlock silent");
-            RevealCharacterEpoch(EpochModel.GetId<Silent1Epoch>());
+            if (a.Length != 2)
+                throw new CommandError("用法：unlock silent|regent");
+            string epochId=a[1].ToLowerInvariant() switch
+            {
+                "silent" or "猎手" or "静默猎手" => EpochModel.GetId<Silent1Epoch>(),
+                "regent" or "储君" => EpochModel.GetId<Regent1Epoch>(),
+                _ => throw new CommandError("角色应为 silent（静默猎手）或 regent（储君）。")
+            };
+            RevealCharacterEpoch(epochId);
             return;
         }
         if (cmd == "reveal")
@@ -790,54 +796,90 @@ public partial class Main : Node, ICardSelector
         {
             "ironclad" or "warrior" or "战士" or "铁甲战士" => ModelDb.Character<Ironclad>(),
             "silent" or "hunter" or "静默猎手" or "猎手" => ModelDb.Character<Silent>(),
-            _ => throw new CommandError("角色应为 ironclad（铁甲战士）或 silent（静默猎手）。")
+            "regent" or "储君" => ModelDb.Character<Regent>(),
+            _ => throw new CommandError("角色应为 ironclad（铁甲战士）、silent（静默猎手）或 regent（储君）。")
         };
 
     private static string CharacterKey(CharacterModel character)
-        => character is Silent ? "silent" : "ironclad";
+        => character switch
+        {
+            Silent => "silent",
+            Regent => "regent",
+            _ => "ironclad"
+        };
 
     private static string CharacterName(CharacterModel? character)
         => character==null?"铁甲战士":Text(character.Title);
 
-    private static string SilentUnlockRequirement()
+    private static string StarCounterDescription()
     {
-        var unlockInfo=EpochModel.Get<Silent1Epoch>().UnlockInfo;
+        LocString description=new("static_hover_tips","STAR_COUNT.description");
+        description.Add("singleStarIcon","✦");
+        return Text(description);
+    }
+
+    private static EpochModel? CharacterUnlockEpoch(CharacterModel character)
+        => character switch
+        {
+            Silent => EpochModel.Get<Silent1Epoch>(),
+            Regent => EpochModel.Get<Regent1Epoch>(),
+            _ => null
+        };
+
+    private static string CharacterUnlockRequirement(CharacterModel character)
+    {
+        EpochModel? epoch=CharacterUnlockEpoch(character);
+        if(epoch==null) return "";
+        var unlockInfo=epoch.UnlockInfo;
         unlockInfo.Add("IsRevealed",variable:false);
         return Text(unlockInfo);
     }
 
-    private bool CanRevealSilent()
+    private bool CanRevealCharacterEpoch(EpochModel epoch)
     {
-        var stats=SaveManager.Instance.Progress.GetStatsForCharacter(ModelDb.Character<Ironclad>().Id);
-        string silentId=EpochModel.GetId<Silent1Epoch>();
-        return stats!=null
-            && stats.TotalWins+stats.TotalLosses>0
-            && SaveManager.Instance.GetRevealableEpochs().Any(epoch=>epoch.Id==silentId);
+        if(epoch is Silent1Epoch)
+        {
+            // EnsureTerminalTimelineProgress() pre-opens Neow's native timeline
+            // expansion for standard terminal starts. Keep Silent's original
+            // post-run gate so that setup does not expose her on a fresh profile.
+            var stats=SaveManager.Instance.Progress.GetStatsForCharacter(ModelDb.Character<Ironclad>().Id);
+            if(stats==null || stats.TotalWins+stats.TotalLosses<=0) return false;
+        }
+        return SaveManager.Instance.GetRevealableEpochs().Any(item=>item.Id==epoch.Id);
     }
 
     private void RevealCharacterEpoch(string epochId)
     {
-        string silentId=EpochModel.GetId<Silent1Epoch>();
-        if(epochId!=silentId)
-            throw new CommandError("当前网页时间线只接入了静默猎手的原版解锁节点。");
-        if(SaveManager.Instance.IsEpochRevealed(silentId))
+        EpochModel? epoch=epochId switch
         {
-            Say("静默猎手已解锁，可以从角色菜单开始旅程。");
+            var id when id==EpochModel.GetId<Silent1Epoch>() => EpochModel.Get<Silent1Epoch>(),
+            var id when id==EpochModel.GetId<Regent1Epoch>() => EpochModel.Get<Regent1Epoch>(),
+            _ => null
+        };
+        if(epoch==null)
+            throw new CommandError("当前网页仅接入静默猎手与储君的原版角色解锁节点。");
+        CharacterModel character=epoch is Silent1Epoch
+            ? ModelDb.Character<Silent>()
+            : ModelDb.Character<Regent>();
+        if(SaveManager.Instance.IsEpochRevealed(epoch.Id))
+        {
+            Say($"{Text(character.Title)}已解锁，可以从角色菜单开始旅程。");
             return;
         }
-        if(!CanRevealSilent()) throw new CommandError("尚未满足原版解锁条件，或该历史节点当前不可揭示。"+SilentUnlockRequirement());
-        if(!SaveManager.Instance.Progress.HasEpoch(silentId))
-            throw new InvalidOperationException("Neow timeline expansion did not create the original Silent unlock epoch.");
-        SaveManager.Instance.RevealEpoch(silentId);
-        SaveManager.Instance.Progress.PendingCharacterUnlock=ModelDb.Character<Silent>().Id;
-        foreach(EpochModel epoch in EpochModel.Get<Silent1Epoch>().GetTimelineExpansion())
+        if(!CanRevealCharacterEpoch(epoch))
+            throw new CommandError("尚未满足原版解锁条件，或该历史节点当前不可揭示。"+CharacterUnlockRequirement(character));
+        if(!SaveManager.Instance.Progress.HasEpoch(epoch.Id))
+            throw new InvalidOperationException($"原版时间线扩展没有创建角色解锁节点 {epoch.Id}。");
+        SaveManager.Instance.RevealEpoch(epoch.Id);
+        SaveManager.Instance.Progress.PendingCharacterUnlock=character.Id;
+        foreach(EpochModel child in epoch.GetTimelineExpansion())
         {
-            var existing=SaveManager.Instance.Progress.Epochs.FirstOrDefault(item=>item.Id==epoch.Id);
+            var existing=SaveManager.Instance.Progress.Epochs.FirstOrDefault(item=>item.Id==child.Id);
             if(existing==null || existing.State==EpochState.ObtainedNoSlot)
-                SaveManager.Instance.UnlockSlot(epoch.Id);
+                SaveManager.Instance.UnlockSlot(child.Id);
         }
         SaveManager.Instance.SaveProgressFile();
-        Say("静默猎手已解锁，可以从角色菜单开始旅程。");
+        Say($"{Text(character.Title)}已解锁，可以从角色菜单开始旅程。");
     }
 
     private async Task TestEnterAct(int actIndex)
@@ -1564,7 +1606,7 @@ public partial class Main : Node, ICardSelector
         if(run?.CurrentRoom is TreasureRoom)
             return !treasureOpened?"open 开箱并领取原版金币和附加奖励":!treasureDone?"choose 编号领取遗物 · skip 跳过遗物":"move 编号前进 · proceed 查看路线";
         if(run?.CurrentRoom is MerchantRoom)return "buy 编号购买商品 · proceed 离开商店 · move 编号也可直接前进 · shop 查看清单";
-        return run==null?(HasPendingRunSave()?"点击继续旅程或输入 continue 恢复存档；从角色菜单开始新旅程":"从角色菜单选择角色并开始旅程；也可输入 new ironclad 或 new silent"):"map 查看路线 · move 编号前进";
+        return run==null?(HasPendingRunSave()?"点击继续旅程或输入 continue 恢复存档；从角色菜单开始新旅程":"从角色菜单选择角色并开始旅程；也可输入 new ironclad、new silent 或 new regent"):"map 查看路线 · move 编号前进";
     }
     private static object[] CardHoverTips(CardModel card)
     {
@@ -1781,7 +1823,7 @@ public partial class Main : Node, ICardSelector
     private object[] CharacterMenuViews()
     {
         var unlockedIds=SaveManager.Instance.GenerateUnlockStateFromProgress().Characters.Select(character=>character.Id).ToHashSet();
-        var models=new CharacterModel[]{ModelDb.Character<Ironclad>(),ModelDb.Character<Silent>()};
+        var models=new CharacterModel[]{ModelDb.Character<Ironclad>(),ModelDb.Character<Silent>(),ModelDb.Character<Regent>()};
         return models.Select(character=>
         {
             bool unlocked=unlockedIds.Contains(character.Id);
@@ -1806,20 +1848,22 @@ public partial class Main : Node, ICardSelector
 
     private object[] CharacterEpochUnlockViews()
     {
-        if(!CanRevealSilent() || SaveManager.Instance.IsEpochRevealed<Silent1Epoch>()) return [];
-        EpochModel epoch=EpochModel.Get<Silent1Epoch>();
-        LocString unlockInfo=epoch.UnlockInfo;
-        unlockInfo.Add("IsRevealed",variable:false);
-        return
-        [
-            new
+        var revealableIds=SaveManager.Instance.GetRevealableEpochs().Select(item=>item.Id).ToHashSet(StringComparer.Ordinal);
+        EpochModel[] supportedEpochs=[EpochModel.Get<Silent1Epoch>(),EpochModel.Get<Regent1Epoch>()];
+        return supportedEpochs
+            .Where(epoch=>revealableIds.Contains(epoch.Id)&&CanRevealCharacterEpoch(epoch)&&!SaveManager.Instance.IsEpochRevealed(epoch.Id))
+            .Select(epoch=>
             {
-                id=epoch.Id,
-                title=Text(epoch.Title),
-                unlockInfo=Text(unlockInfo),
-                revealLabel=Text(new LocString("timeline","EPOCH_INSPECT.unlockButton"))
-            }
-        ];
+                LocString unlockInfo=epoch.UnlockInfo;
+                unlockInfo.Add("IsRevealed",variable:false);
+                return (object)new
+                {
+                    id=epoch.Id,
+                    title=Text(epoch.Title),
+                    unlockInfo=Text(unlockInfo),
+                    revealLabel=Text(new LocString("timeline","EPOCH_INSPECT.unlockButton"))
+                };
+            }).ToArray();
     }
 
     private void Publish()
@@ -1930,7 +1974,7 @@ public partial class Main : Node, ICardSelector
                 },
                 characters=CharacterMenuViews(),
                 seed,act=run==null?0:run.CurrentActIndex+1,actCount=run?.Acts.Count??0,floor=run?.TotalFloor??0,location=run==null?"旅程尚未开始":Text(run.Act.Title),
-                player=player==null?null:new {name=CharacterName(player.Character),character=CharacterKey(player.Character),hp=player.Creature.CurrentHp,maxHp=player.Creature.MaxHp,block=player.Creature.Block,gold=player.Gold,energy=pcs?.Energy??0,maxEnergy=pcs?.MaxEnergy??player.MaxEnergy,turn=pcs?.TurnNumber??0,deck=player.Deck.Cards.Count,draw=pcs?.DrawPile.Cards.Count??0,discard=pcs?.DiscardPile.Cards.Count??0,exhaust=pcs?.ExhaustPile.Cards.Count??0,powers=player.Creature.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(),relics=player.Relics.Select(r=>new{name=Text(r.Title),description=Text(r.DynamicDescription)}).ToArray(),potions=player.PotionSlots.Select(p=>p==null?"空槽":Text(p.Title)).ToArray()},
+                player=player==null?null:new {name=CharacterName(player.Character),character=CharacterKey(player.Character),hp=player.Creature.CurrentHp,maxHp=player.Creature.MaxHp,block=player.Creature.Block,gold=player.Gold,energy=pcs?.Energy??0,maxEnergy=pcs?.MaxEnergy??player.MaxEnergy,turn=pcs?.TurnNumber??0,deck=player.Deck.Cards.Count,draw=pcs?.DrawPile.Cards.Count??0,discard=pcs?.DiscardPile.Cards.Count??0,exhaust=pcs?.ExhaustPile.Cards.Count??0,stars=pcs?.Stars,showStarCounter=(CM.IsInProgress||CM.IsStarting)&&pcs!=null&&(player.Character.ShouldAlwaysShowStarCounter||pcs.Stars>0),starTitle=Text(new LocString("static_hover_tips","STAR_COUNT.title")),starDescription=StarCounterDescription(),powers=player.Creature.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(),relics=player.Relics.Select(r=>new{name=Text(r.Title),description=Text(r.DynamicDescription)}).ToArray(),potions=player.PotionSlots.Select(p=>p==null?"空槽":Text(p.Title)).ToArray()},
                 hand=pcs?.Hand.Cards.Select((card,index)=>CardView(card,index)).ToArray()??[],
                 combat=CombatView(),
                 enemies=enemyViews,
@@ -1994,8 +2038,8 @@ public partial class Main : Node, ICardSelector
 
     private sealed class CommandError(string message):Exception(message);
     private const string Help="""
-开始旅程  new ironclad|silent [种子] [进阶0–10] / continue 恢复原版存档
-角色解锁  unlock silent（完成一局铁甲战士旅程后揭示原版角色）
+开始旅程  new ironclad|silent|regent [种子] [进阶0–10] / continue 恢复原版存档
+角色解锁  unlock silent|regent（满足原版对局条件后揭示角色）
 查看状态  status / hand / deck / draw / discard / exhaust / relics / potions
 出牌      play 手牌编号 敌人编号（需指定目标的牌；例：play 1 2）
 结束回合  end

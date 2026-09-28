@@ -751,3 +751,15 @@ TestMode/headless 的首句在原版 `OnRoomEnter()` 中会先清空当前选项
 现在启动时会把 Silent epoch 缺失、`None`、`NoSlot` 或 `NotObtained` 状态迁移到 `ObtainedNoSlot`，随后照原版 `EpochModel.QueueTimelineExpansion()` 规则开放 `Obtained` 槽位；已获得或揭示的状态不会回退。`tests/silent_character_smoke.py` 新增旧档迁移夹具。最新构建 0 警告、0 错误；烟测通过迁移旧 `not_obtained` 节点、活动放弃、重启后时间线强制显示、揭示 Epoch 以及猎手开局。另将真实 `progress.save` 只读复制到隔离 `res://.cache/spirecli-*` 路径回放，确认启动迁移后会显示 `SILENT1_EPOCH`；角色在揭示前仍锁定，执行原版 Epoch 揭示后可选。未改动真实存档。
 
 修复已编译到 `runtime/.godot/mono/temp/bin/Debug/SpireCli.dll`。当前运行中的 `server.py`/Godot Host 不会热加载 DLL，需用原命令重启服务；用户现有档案将在下次 Host 初始化时自动迁移，无需再放弃一局。原版解锁仍包含 Timeline 节点“解锁”交互；放弃计为完成/失败对局并使节点出现，不会跳过原版揭示步骤。网页实时状态无法在沙箱中连接本机 127.0.0.1 验证。
+
+## 58. 接入储君（2026-09-28）
+
+按原版储君模型接入第三个网页可选角色。`Regent.cs` 给出 75 HP、99 金币、10 张起始牌（4 张 Regent 打击、4 张 Regent 防御、陨星、崇拜）与初始遗物「天赋君权」；角色选择资料、开局和遗物效果都取自原版模型，不在宿主重写卡牌或规则。`DivineRight.AfterRoomEntered()` 原版在进入战斗时增加 3 辉星；快照按 `NStarCounter.RefreshVisibility()` 条件暴露辉星数，界面说明取自原版 `STAR_COUNT` 本地化。
+
+解锁沿用原版时间线链：铁甲战士完成一局后揭示 `SILENT1_EPOCH` 并解锁静默猎手；静默猎手完成一局后原版 `ProgressSaveManager.PostRunUnlockCharacterEpochCheck()` 获得 `REGENT1_EPOCH`；揭示它之后 `UnlockState.Characters` 才包含储君。`new regent` 与开始菜单均遵循此门槛，未解锁时拒绝开局并使用原版锁定角色表现。网页只适配猎手与储君这两个角色节点，不等于完整 Timeline UI。
+
+新增 `tests/regent_character_smoke.py` 在隔离存档验证新档锁定、两段角色解锁、Epoch 原文、储君的原版开局属性/牌组/遗物和首战辉星。`python3 tests/regent_character_smoke.py --timeout 90`、`python3 tests/silent_character_smoke.py --timeout 90` 与 `python3 tests/engine_smoke.py --timeout 90` 均通过。Engine smoke 原有 abandon 断言同步为当前行为：结束后快照保留败局角色状态，网页显示开始菜单，run save 清除。最新 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 0 warning、0 error；`node --check web/app.js`、Python 编译与 `git diff --check` 通过。
+
+当前 `runtime/Main.cs` / Godot Mono assembly SHA-256：`7f5d75b8da3c9341a182494c340c261dcce1113648f9af718aca6083ac8a4ae1` / `d10fcb9ef3ffda35a0b3594867364d27863b9d8f0e111ce8fc8e3f030361cd52`。
+
+没有覆盖储君全部卡牌、辉星消费卡、全部事件/敌人、普通图形版与视觉流程，不能宣称完整 1:1。新的 C# 程序集已经生成；运行中的网页服务不会热加载，需要重启 `server.py`，刷新页面后进入角色选择。manifest 仍将 Build `23811903` 归属标记为未独立核验。

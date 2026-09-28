@@ -361,8 +361,9 @@ def main() -> int:
                 "Following the displayed next route did not enter the next room")
 
         state = host.command("abandon")
-        require(state.get("phase") == "ready" and state.get("player") is None and not state.get("busy"),
-                "abandon left the host or run lifecycle busy")
+        require(state.get("phase") == "defeat" and state.get("player", {}).get("hp") == 0
+                and not state.get("hasRunSave") and not state.get("busy"),
+                "abandon did not finish as a recorded defeat without leaving a resumable run")
         state = host.command(f"new ironclad {args.seed} 0")
         require(state.get("player") is not None and state.get("seed") == args.seed,
                 "A new run could not start after abandoning the previous run")
