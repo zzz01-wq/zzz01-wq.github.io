@@ -1,26 +1,26 @@
 # 杀戮尖塔 2 网页命令版：继续开发交接
 
-交接日期：2026-09-21（本轮进展已更新）。本文记录当前代码与验证状态；不是功能完成报告。
+交接日期：2026-09-28（本轮进展已更新）。本文记录当前代码与验证状态；不是功能完成报告。
 
 ## 1. 新对话可直接使用的任务提示
 
-> 继续开发 Steam Build 23811903 目标的《杀戮尖塔 2》战士命令终端。先看 `docs/engine-coverage.md` 和本交接中的最新状态，已通过的构建、战斗、选择、房间、存档和 HTTP 测试不要沿用旧结论或重复声称未完成。玩法依据仍只能来自提供的原版文件；目标版本来源尚未独立证明；不可宣称完整规则 1:1。沿用“网页 → Python HTTP 桥 → Godot Mono → 原版 sts2.dll”架构。后续优先做真实浏览器/移动端验收、TestMode 分支全面盘点、未覆盖房间与内容、服务生命周期/安全边界以及安装和 README。每项记录原版依据、修改文件、真实验证和剩余限制。
+> 继续开发 Steam Build 23811903 目标的《杀戮尖塔 2》网页终端；当前已接入铁甲战士与静默猎手、点击式开局/角色选择和原版存档。先看 `docs/engine-coverage.md` 与本交接第 37 节，按最新代码重新验证，不要沿用更早报告中的旧哈希/旧测试状态。玩法依据仍只能来自提供的原版文件；目标版本来源尚未独立证明；不可宣称完整规则 1:1。沿用“网页 → Python HTTP 桥 → Godot Mono → 原版 sts2.dll”架构。后续优先做真实浏览器/移动端验收、TestMode 分支全面盘点、未覆盖房间与内容、服务生命周期/安全边界以及安装和 README。每项记录原版依据、修改文件、真实验证和剩余限制。
 
 模型由用户在新对话界面选择；上面的文字本身不能切换模型。如果当前环境不支持指定的 subagent 模型，应明确说明，不要谎报模型。
 
 ## 2. 用户已经确定的要求
 
 1. 版本以 **Steam Build ID 23811903** 为准。
-2. 首个职业是战士 / Ironclad。
+2. 首先实现战士 / Ironclad；后续添加角色时继续复用本机原版模型和进度。
 3. 最终产品必须是网页可玩的游戏；不是只有系统终端程序。
 4. 网页内部提供自己的命令输入框、命令语法、状态和临时反馈；不是 F12 控制台。
-5. 出牌、结束回合、选路、事件、奖励、商店、药水等游戏操作全部用命令完成。
+5. 出牌、结束回合、选路、事件、奖励、商店、药水等动作沿用内置命令处理；网页尽量提供点击快捷入口，命令输入框保留为可选操作方式。
 6. 玩法与设定要求遵循原版，不能自行编造卡牌数值、敌人 AI、地图、事件效果、奖励概率或进阶规则。
 7. Wiki 可以辅助查证，但不能覆盖本版本原版文件的实际行为。
 8. 用户已经提供原版文件；目前可以继续开发，不要再次泛泛要求用户提供整套游戏。
 9. 先做战士不意味着已经授权把其他影响战士流程的无色牌、诅咒、事件、遗物、药水和敌人删掉。
 
-当前工程偏向单人战士流程。多人模式尚未实现；不要把这个范围说成完整游戏所有模式均已还原。
+当前工程偏向单人流程，现支持战士与静默猎手开局；多人模式尚未实现。不要把这个范围说成完整游戏所有模式均已还原。
 
 ## 3. 当前状态：务必区分代码与验证
 
@@ -194,10 +194,11 @@ DOTNET_ROOT=/opt/homebrew/opt/dotnet/libexec \
 ### 7.5 启动网页服务
 
 ```sh
-python3 server.py --host 127.0.0.1 --port 8765
+env -u STS2_DEV_SKIP python3 server.py --host 127.0.0.1 --port 8765
 ```
 
 浏览器打开 `http://127.0.0.1:8765/`。无需 npm 安装或前端打包。
+`STS2_DEV_SKIP` 只要存在就会启用原版 `DebugSettings.DevSkip`，值写成 `0` 或空字符串也算启用。网页服务启动时会清除该变量；直接运行 Godot 时也应使用 `env -u STS2_DEV_SKIP`。
 
 重编译后新建规则进程/会话再测试；旧 Cookie 对应的旧进程可能仍加载旧程序集。不要用旧网页会话证明新 DLL 正确。
 
@@ -285,21 +286,21 @@ abandon
 
 ## 10. 第三优先级：特殊事件和直接依赖图形 UI 的流程
 
-卡牌组合选择和遗物选择已完成窄范围命令适配，且通过隔离测试。以下表中前两项不再是待实现项；水晶球、建筑师和尚未扫描的图形依赖仍未覆盖。源码根目录均为 `.cache/source/`。优先搜索方法名，行号会随反编译变化。
+卡牌组合选择和遗物选择已完成窄范围命令适配，且通过隔离测试；水晶球本轮接入网页交互并使用原版小游戏模型。建筑师对白已接入网页，但终局逐句和胜利结算尚未实际回归；其他未扫描的图形依赖仍未覆盖。源码根目录均为 `.cache/source/`。优先搜索方法名，行号会随反编译变化。
 
 | 源文件 / 方法 | 问题 | 需要完成 |
 | --- | --- | --- |
 | `MegaCrit.Sts2.Core.Commands/CardSelectCmd.cs` / `FromChooseABundleScreen` | TestMode 原版分支固定 `bundles[0]` | 已由 `ChoiceAdapters.SelectBundle` 接命令选择；隔离 bundle smoke 通过；非单人/TestMode 未接管 |
 | `MegaCrit.Sts2.Core.Commands/RelicSelectCmd.cs` / `FromChooseARelicScreen` | 原版创建 NChooseARelicSelection 图形界面 | 已由 `ChoiceAdapters.SelectRelic` 接命令选择并回写原版同步器；隔离 relic smoke 通过；非本地单人/TestMode 未接管 |
-| `MegaCrit.Sts2.Core.Models.Events/CrystalSphere.cs` | 支付后启动图形小游戏 | 保留原版费用、随机流和结算 |
-| `MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent/CrystalSphereMinigame.cs` / `PlayMinigame` | 等待屏幕与完成 TCS | 把工具、格子操作变成命令，适配完成等待 |
-| `MegaCrit.Sts2.Core.Models.Events/TheArchitect.cs` | 对话依赖图形回调，选项可能暂时清空 | 推进原版对白、选项与最终胜利同步 |
+| `MegaCrit.Sts2.Core.Models.Events/CrystalSphere.cs` | 支付后启动图形小游戏 | 本轮网页已呈现原版选项启动的占卜；价格、Debt、RNG、完成事件仍由原版方法处理 |
+| `MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent/CrystalSphereMinigame.cs` / `PlayMinigame` | 原版等待屏幕与完成 TCS；TestMode 下格子节点不创建 | 本轮网页以原版 `SetTool`、`CellClicked` 操作同一模型，等待完成信号并由原版生成奖励；尚未做实际房间流程回归 |
+| `MegaCrit.Sts2.Core.Models.Events/TheArchitect.cs` | 对话依赖图形回调，首句选项可能暂时清空 | 已接入原版当前对白和逐句 `EventOption`；TestMode 空首句时通过反射恢复原版首个选项；终局通关流程仍需实际回归 |
 
-水晶球具体已有模型接口：cells、GridSize、DivinationCount、IsFinished、PlacedAllItems、Items、SetTool、CellClicked、SetHoveredCell、UnsetHoveredCell。先读原版显示层判断哪些字段当时可见；不能把埋藏内容全部输出给用户。工具和坐标命令语法可以自己设计，但效果、次数、掉落与胜负必须交还原版模型。不要调用强制结束直接绕过玩法。
+水晶球网页界面使用原版格子尺寸、说明和按钮本地化；只显示原版已揭示的完整物品，不暴露隐藏格子的物品归属。点击格子或切换工具仍经网页内命令交给原版小游戏模型。不要调用 `ForceMinigameEnd()` 绕过次数或奖励结算，也不要把此 UI 桥接称为完整 1:1。
 
-建筑师需要核对 Dialogue、CurrentLineIndex、CreateOptionForCurrentLine、AdvanceDialogue、WinRun 的调用链；原版最终流程涉及 ActChangeSynchronizer、TriggerVictory、OnEnded 和 GuaranteeKillAllPlayers。因此角色 Dead 不一定意味着普通失败，不能自己宣布最终胜利或只改 gameWon。
+建筑师终局对白已按 `TheArchitect` 的 Dialogue、CurrentLineIndex、CreateOptionForCurrentLine、AdvanceDialogue、WinRun 接入网页；原版最终流程仍涉及 ActChangeSynchronizer、TriggerVictory、OnEnded 和 GuaranteeKillAllPlayers。因此角色 Dead 不一定意味着普通失败，不能自己宣布最终胜利或只改 gameWon。终局完整流程尚未实际回归。
 
-选择桥使用构建时 `Mono.Cecil` 修改 `runtime/lib/sts2.dll` 暂存副本；补丁器先校验原版 DLL 哈希和 MVID，`reference/sts2.dll` 保持不动。当前只接上述两个选择入口和一处卡牌奖励替代项包装，不意味着其余图形回调可用，也不修改玩法公式。
+选择桥使用构建时 `Mono.Cecil` 修改 `runtime/lib/sts2.dll` 暂存副本；补丁器先校验原版 DLL 哈希和 MVID，`reference/sts2.dll` 保持不动。当前接两个选择入口、一处卡牌奖励替代项包装，以及水晶球的 `ShowScreen` 显示入口；这不意味着其余图形回调可用，也不修改玩法公式。
 
 - [ ] 系统搜索全部战士可达事件、古老之民、遗物、卡牌与奖励中的 `ShowScreen`、`N*Screen`、`TestMode`、等待用户 TCS、随机默认选择。
 - [x] 建立 `docs/engine-coverage.md`；持续按真实验证更新功能、原版文件/方法、适配方式、测试案例和剩余差异。
@@ -588,3 +589,165 @@ rg -n 'ShowScreen|RelicsSelected|FromChooseABundleScreen' .cache/source
 ## 35. 移除反馈浮层并修正选牌排版与原版词条提示（2026-09-28）
 
 按用户要求移除命令消息浮层；原版消息不再重复覆盖选项列表，事件变牌结果仍留在事件区域。命令错误在命令栏上方状态行显示。选项错位原因是全局 `button span` 左边距影响了卡名、序号等内容；现限定该装饰样式只作用于命令提交按钮，并明确卡名和描述的对齐样式。卡牌类型快照改为直接读取原版 `CardType.ToLocString()` 中文文本，攻击、技能、能力等在选项名称行显示。卡牌特殊词条的标题和说明由原版 `CardModel.HoverTips` 传入快照；网页在描述中对应词条上悬停显示，例如“重放”。静态资源版本号已更新。`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功（0 警告、0 错误）；`node --check web/app.js` 与 `git diff --check` 通过。本轮没有运行玩法测试，也没有浏览器视觉验收。最新 `runtime/Main.cs` / 生成程序集 SHA-256 为 `4d47cb87c1f041b254c964a2f1a2f98eb2424870d53522d1d262ce968e0c6d5d` / `9acbd12eab47d13216d147910beb322a98666ed13758817135f70480fe63c8e0`。
+
+## 36. 静默猎手与点击式角色菜单（2026-09-28）
+
+用户要求不依赖命令输入开局，加入原版猎手角色并自行测试，不在开发途中要求决策。已将原版类型 `Silent`（本机中文名“静默猎手”）加入角色菜单：菜单从 `CharacterModel` 读取原版描述、生命、金币、起始牌数和初始遗物；选定后 `new silent` 使用原版 `Player.CreateForNewRun(CharacterModel, UnlockState, ulong)`，并依据原版 `UnlockState.Characters` 校验。已有战士 `new ironclad` 兼容保留。网页新增“开始新旅程 → 角色选择”按钮流程，失败/胜利后也能打开菜单；继续存档由“继续旅程”按钮执行。命令框仍可用，但不再是开始游戏的必经入口。
+
+解锁提示来自 `.cache/extracted/localization/zhs/epochs.json` 的 `SILENT1_EPOCH.unlockInfo`（以铁甲战士完成一局游戏后揭示）；解锁资格取原版标准单人进度中的 `TotalWins + TotalLosses`。原版 `NeowEpoch.QueueUnlocks()` 与 `Silent1Epoch.QueueUnlocks()` 的非视觉存档效果由 `SaveManager` 适配，Timeline 画面和动画未复刻。原版 `CreatureCmd` 在 TestMode 下跳过失败局的 `RunManager.OnEnded(false)`；宿主现于死亡结算时调用这个原版结算方法，使 `ProgressSaveManager` 记录完成局计数。菜单的“揭示并开始”在满足条件后揭示 Silent Epoch、写入 pending character unlock 和时间线扩展，再进入原版角色开局。该适配只覆盖当前网页需要的单人流程，不宣称原版 Timeline 或整个游戏完整 1:1。
+
+新增 `tests/silent_character_smoke.py`：隔离进度验证新档下 Silent 锁定、锁定时拒绝开局、Ironclad 原版失败局记录、满足条件后揭示，以及 Silent 的 70 HP / 99 金币 / 12 张起始牌 / 原版蛇之戒指和 Neow 开局。最新构建成功，0 warning、0 error；本轮 `silent_character_smoke.py`、`engine_smoke.py`、`save_smoke.py` 通过；`node --check web/app.js` 与 `git diff --check` 通过。尝试启动本地网页服务做可视化检查时，沙箱返回 `Operation not permitted`，Chrome 控制面也未提供可用浏览器页；因此本轮没有真实浏览器点击/视觉验收。Steam Build `23811903` 归属仍按 manifest 记为未独立验证。
+
+## 37. 原版主菜单层级与新旅程点击修正（2026-09-28）
+
+用户指出主菜单下的小字说明未经原版支持，并询问“放弃当前游戏”是否原版入口。源码核查结论：根菜单 `NMainMenuTextButton` 只显示本地化按钮名，没有副标题；“放弃当前游戏”确为原版按钮，只在有 run 存档时出现。子菜单 `NSubmenuButton` 确实有说明文字，且未解锁时会显示 `*.LOCKED.description`。
+
+当前网页主菜单已改为原版本地化按钮名，不再附加自拟短说明；run 存档存在时隐藏单人模式，显示“继续游戏”和“放弃当前游戏”。放弃确认使用原版标题、正文和按钮文案。原版 `NMainMenu.AbandonRun()` 会把该局记为失败并写 run history；`runtime/Main.cs` 现从活动 RunManager 或 `SaveManager.LoadRunSave()` 取序列化旅程，调用原版 `UpdateProgressWithRunData(..., false)` 和 `RunHistoryUtilities.CreateRunHistoryEntry(..., isAbandoned:true, ...)` 后删存档。无存档时，单人模式根据原版 `Progress.NumberOfRuns` 决定首次直接角色选择、后续进入模式子菜单。标准/每日/自定名称和说明取本机原版本地化；Daily/Custom 锁定状态取原版 Epoch 解锁状态。
+
+网页仅实现标准单人模式。多人、百科、时间线、设置、退出及每日/自定模式目前不能启动；仍以原版名称和可获得的原版显示条件呈现，未添加“网页终端暂未接入”等副标题。源码细节见 `docs/sources.md` 的“本机原版主菜单与单人模式层级依据”。本轮修改 `runtime/Main.cs`、`web/app.js`、`web/style.css`、`web/index.html`、`docs/interface.md`、`docs/sources.md` 和本交接记录；网页静态资源参数已更新为 `20260928-main-menu-4`。`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功（0 警告、0 错误），`node --check web/app.js` 与 `git diff --check` 通过；未运行玩法 smoke。当前环境没有浏览器可执行文件，且此前本机服务启动受沙箱端口权限限制，尚无真实页面点击/视觉验收。
+
+## 38. 侧栏路线预览与命令速查移除（2026-09-28）
+
+用户要求移除右侧“命令速查”，把路线预览及“查看地图”入口放到右侧。已从 `web/index.html` 删除命令速查区，在角色状态下方新增路线侧栏面板；`web/app.js` 将路线清单从中间选项区迁至此面板，可达路线仍调用 `move`，地图按钮调用 `map`。地图覆盖层打开时隐藏侧栏路线面板，收起后重新显示。`web/style.css` 为侧栏中的路线列表和地图按钮补充紧凑样式，`docs/interface.md` 同步布局说明，静态资源缓存版本更新为 `20260928-sidebar-routes-1`。
+
+`node --check web/app.js` 与 `git diff --check` 通过。刷新了当前 Chrome 中运行的本地游戏页，AX 树确认命令速查已消失且路线预览/地图按钮位于右侧；截图也确认布局正常。未运行玩法测试。
+
+## 39. 右侧路线入口精简（2026-09-28）
+
+用户要求路线侧栏只保留“查看地图”，并提高按钮默认态亮度。已删去路线节点文字清单和辅助标题，只在存在后续路线且地图覆盖层收起时显示“查看地图”按钮；具体路线仍在原版节点地图中查看与点击。按钮默认背景、文字和边框改用更亮的暖铜色，悬停态继续增强对比。网页资源缓存版本更新为 `20260928-sidebar-routes-2`，`docs/interface.md` 已同步。
+
+`node --check web/app.js`、`git diff --check` 通过。刷新 Chrome 当前页后，确认侧栏只显示“查看地图”按钮，默认态对比度已提高；未运行玩法测试。
+
+## 40. 事件结束后的原版继续选项（2026-09-28）
+
+用户报告部分事件结束后没有离开入口。对照 `.cache/source/MegaCrit.Sts2.Core.Nodes.Rooms/NEventRoom.cs` 后发现：原版 `SetOptions()` 在 `EventModel.IsFinished` 时，即使 `CurrentOptions` 为空，也会注入标题来自 `events.PROCEED.title` 的“继续”选项；点击会打开地图。网页此前只枚举 `CurrentOptions`，因此结束页没有选项。
+
+现于 `runtime/Main.cs` 的事件快照在 `IsFinished` 时提供原版本地化“继续”选项，点击走网页 `map` 命令打开路线图。是否能前往具体路线仍由 `CanLeave()` 控制。`docs/sources.md` 和 `docs/interface.md` 已补充依据。最终 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 警告、0 错误；未运行玩法 smoke，也未在活跃旅程上点击推进。
+
+## 41. 战斗结束回合按钮与自动出牌文本（2026-09-28）
+
+战斗手牌区顶部增加“结束回合”按钮，玩家回合可用且结算空闲时启用；即使手牌为空也显示。网页按钮提交现有 `end` 命令，继续由运行时验证玩家回合状态并创建原版 `EndPlayerTurnAction`。原版依据为 `.cache/source/MegaCrit.Sts2.Core.Nodes.Combat/NEndTurnButton.cs` 与 `.cache/source/MegaCrit.Sts2.Core.GameActions/EndPlayerTurnAction.cs`。
+
+运行时订阅原版 `CombatManager.History.Changed`，读取新增的 `CardPlayFinishedEntry`，只记录 `CardPlay.IsAutoPlay` 为真的当前玩家出牌，并使用原版本地化卡名。卡牌列表显示在战斗文本区的敌人信息下方；原版会清空历史，因此在清理前已收集的列表会保留到离开该地图节点，并在新战斗/新旅程时重置。`docs/sources.md` 补充了 `CardCmd.AutoPlay()`、`CardPlay.IsAutoPlay` 和 `CombatHistory` 的原版证据。此处只展示被原版历史明确标记为自动打出的卡牌，不声称覆盖全部自动效果或完整复刻战斗日志。
+
+验证：`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 警告、0 错误；`node --check web/app.js` 与 `git diff --check` 通过。当前源文件 SHA-256：`runtime/Main.cs` `03ba069366a27862a372b9c2ee72035eff0a7eff399068026864719320b7d638`；最新构建 `runtime/.godot/mono/temp/bin/Debug/SpireCli.dll` `35e36fd7a7df3fd1ccd2f7c7f68f973dc2b0e6ad711b8f7de8adc277e7f1fd75`。未启动/重启 Godot 桥，也未在当前存档中推进战斗；没有做实际游戏内点击验证。运行时变更需重启桥接进程后载入。
+
+## 42. 偷窃草蜢显示被偷卡牌（2026-09-28）
+
+原版 `.cache/source/MegaCrit.Sts2.Core.Models.Monsters/ThievingHopper.cs` 的 `ThieveryMove()` 将实际偷到的牌交给 `SwipePower.Steal(CardModel)`；`.cache/source/MegaCrit.Sts2.Core.Models.Powers/SwipePower.cs` 将牌的实例保存在 `StolenCard`。运行时现在从敌人身上的 `SwipePower` 读取卡名并随敌人快照提供 `stolenCards`，网页在敌人资料下显示“偷走的牌：牌名”。没有成功偷牌时不显示。资料依据已记录在 `docs/sources.md`，不按意图描述猜牌名。
+
+验证：最新 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 警告、0 错误；`node --check web/app.js` 与 `git diff --check` 通过。`runtime/Main.cs` SHA-256 `dabdac0809e21c729a62746db03a4dd00e006104303771de08720d506bf8c638`；`runtime/.godot/mono/temp/bin/Debug/SpireCli.dll` SHA-256 `c2434bc6a983b140f1c2e12b21979b9d9f9ab5d4fc73c59d08be8b24fdb7dc69`。未重启桥接进程或推进当前旅程，尚未在实战中视觉验收。
+
+## 43. 偷窃草蜢被偷卡牌预览与可选取回（2026-09-28）
+
+原版证据：`ThievingHopper.ThieveryMove()` 把牌交给 `SwipePower`；其死亡结算将 `SpecialCardReward` 加到原版战斗奖励中。`SpecialCardReward.HoverTips` 提供被偷卡牌的 `CardHoverTip`，`OnSelect()` 才将卡牌加入牌组。原版奖励屏聚焦时显示该卡牌提示，点击领取；继续离开时同步器会对未领取项调用 `OnSkipped()`。
+
+网页中，战斗里的被偷卡名可点开查看牌面；战斗奖励为这张牌显示“查看牌面”和“取回”按钮。预览提供“返回奖励列表”，返回不会改变奖励状态；如决定不取回，可在奖励列表使用原有的“跳过剩余奖励”操作。领取调用原版 `take`/`SelectLocalReward()`，跳过由原版奖励同步器处理未领取项。常规特殊卡牌奖励仍显示“领取”，不会误标为“取回”。静态资源参数更新为 `20260928-hopper-reward-2`。源码依据同步到 `docs/sources.md` 与 `docs/interface.md`。
+
+验证：`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 警告、0 错误；`node --check web/app.js` 与 `git diff --check` 通过。移除预览中的跳过按钮后重新编译，`runtime/Main.cs` SHA-256 `5893c69562d215c410369f945ae566604cfdd9fa58e5b8b15411beeab1ec8cc7`；`runtime/.godot/mono/temp/bin/Debug/SpireCli.dll` SHA-256 `5d342385f763e6d6e92324fee08fc4cc8b3577320e2170ea9c5904c6483dc3a0`。未在当前旅程推进战斗或实测奖励点击；运行时更新需重启桥接进程后加载。
+
+## 44. 可点击按钮的默认强调样式（2026-09-28）
+
+独立操作按钮默认采用暖铜色强调，包含牌面预览、地图工具、菜单次级操作和奖励操作；禁用态仍弱化，被偷卡名字保留行内文字链接样式。奖励、事件等整行选择维持紧凑分隔列表，不铺整块底色。只有用户明确提出时才把可用按钮设为低调样式。CSS 缓存版本更新为 `20260928-button-emphasis-2`；规则记录在 `docs/interface.md`。
+
+## 45. 水晶球占卜事件交互（2026-09-28）
+
+修复占卜事件选择服务方案后无法继续的问题。原版 `CrystalSphere.UncoverFuture()` 扣除当次动态金币费用、创建 3 次占卜；`PaymentPlan()` 添加原版 Debt、创建 6 次占卜。两条路径均等待 `CrystalSphereMinigame.PlayMinigame()` 完成后再结束事件。
+
+根因有两处：TestMode 下 `NCrystalSphereCell.Create()` 和 `NCrystalSphereItem.Create()` 不创建图形节点，但 `PlayMinigame()` 仍等待屏幕输入；网页快照同时把活动小游戏视作未完成事件初始化，`Settle()` 因空事件选项持续等待。当前补丁将原版 `NCrystalSphereScreen.ShowScreen()` 在 TestMode 下窄范围重定向至桥接器登记同一个原版模型；网页呈现原版本地化说明、大小工具和棋盘，按钮提交 `scry` 内置命令，Godot 主线程调用原版 `SetTool()` / `CellClicked()`。活动期间快照保留 Event 阶段，事件初始化等待跳过该已注册小游戏。
+
+格子点击次数、Big/Small 清格、物品揭示条件、揭示时的诅咒副作用、最终奖励生成及事件完成继续由原版模型与同步器执行。快照只有在物品所占格子全揭开后才显示该物品；隐藏物品不下发网页。悬停格子依原版 `SetHoveredCell()` 预览清格区域。原版会逐格揭开物品纹理，网页目前只显示完整揭示后的类型标签，不复刻纹理碎片与动画。原版 TestMode 不会创建的水晶球场景控件没有伪称已复刻；实际水晶球房间流程尚未运行回归，Build `23811903` 的文件归属仍未经独立验证。具体源码依据见 `docs/sources.md` 的水晶球小节。
+
+验证范围：`tools/sts2-bridge-patcher` 与 `runtime` 均重新构建成功（0 warning、0 error），补丁器确认原版参考 DLL 哈希/MVID 后仅修改暂存 `runtime/lib/sts2.dll` 中的 `ShowScreen` 入口；原版 `reference/sts2.dll` 未修改。`node --check web/app.js` 与 `git diff --check` 通过。`runtime/Main.cs` / `ChoiceAdapters.cs` / Godot Mono assembly / patched staged DLL SHA-256：`bb299728d9023be7c3e7c16b5675eecd8ecc212077b2bfc72d289308640e410a` / `dd95c63f5073958172bd2f3ccf9f18c48e909ca9289197cc6546db3655f90d9d` / `66e82670b98bf61fa9fb3163bd5dca2cb4045e274a19b19a97f2523a577b734a` / `a9d1b98403596e313fae0f6948800c7d8920573ec7dbc8bfa2ab6454b1d1f863`。本轮未运行玩法 smoke、未启动浏览器或推进存档；需要重启网页规则会话并进入水晶球事件做实际回归。
+
+## 46. 水晶球奖励列表可见性（2026-09-28）
+
+原版 `CrystalSphereCurse.RevealItem()` 在格子揭示诅咒时直接把 `Doubt` 加入牌组；该物品默认 `ToReward()` 返回 `null`，所以诅咒不会进入末尾奖励列表。其余已揭示金币、药水、卡牌奖励、遗物由原版 `OneOffSynchronizer.OfferCrystalSphereRewards()` 转为标准奖励并调用 `RewardsCmd.OfferCustom()`；非空时在正常模式显示 `NRewardsScreen`，TestMode 交给已接入的 `RewardsSet.testSelector`。原版奖励集为空时不会显示奖励界面。
+
+网页此前在占卜次数用完、奖励列表出现时仍保留 11×11 棋盘，并把奖励选项渲染在棋盘之前；滚动位置若留在棋盘下半部，视觉上会只剩底部跳过按钮。本次在原版奖励集活动时收起已结束棋盘，并在棋盘消失的快照将中心滚动区归顶。奖励和诅咒都继续走原版对象与 API。网页静态资源版本更新为 `20260928-crystal-sphere-2`。`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功（0 警告、0 错误），`node --check web/app.js` 与 `git diff --check` 通过；当前 `runtime/Main.cs` / `runtime/.godot/mono/temp/bin/Debug/SpireCli.dll` SHA-256 为 `92d5e4090025b7a089ac68b3f4ffb3fd9ec0b83676930a9f1440ccaf973d83cc` / `42737b787651776a51007eec4f7520fbc20f715d19096043903047ba9bc4268f`。尚未运行真实事件流程或浏览器交互回归，不能据此声称端到端已验证。
+
+## 47. 最后一幕 Boss 空奖励集（2026-09-28）
+
+用户报告最终 Boss 通关后仍只看到“跳过剩余奖励”。本机原版 `RewardsSet.WithRewardsFromRoom()` 在最后一幕 Boss 明确返回空奖励集；`RewardsSetSynchronizer.BeginRewardsSet()` 随后根据 `AllRewardsSuccessfullySelected` 将空集立即标记完成。问题在 `runtime/Main.cs` 的 TestMode `OfferRewards()`：即使 Rewards 为空也压入网页奖励栈，并等待一个永远不会有选择可完成的 TCS，因此 `ChoiceActions()` 错误地显示 skip，且 `CanLeave()` 因 `Choosing` 被挡住。
+
+现在 `OfferRewards()` 遇到空奖励集直接返回完成任务，让原版同步器的完成状态继续向下传播；网页仅在集合中确有未领取奖励时显示“跳过剩余奖励”。空奖励集不再伪造可领取 UI，离开首领房的下一步继续由原版进度条件决定。已更新 `docs/sources.md` 与 `docs/engine-coverage.md`。`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功（0 警告、0 错误），`node --check web/app.js` 与 `git diff --check` 通过；当前 `runtime/Main.cs` / Godot Mono assembly SHA-256 为 `4501f37ca048f55bfcdd2b6338c2040b01a787a271598174831f614bc93e7853` / `573a1184666fc63f8cf4eb0472cb841d2ea22b5968934fc7c261e7df2985964f`。没有运行最终 Boss 实际流程或浏览器交互测试，不能据此宣称端到端已验证。
+
+## 48. 建筑师终局对白接入（2026-09-28）
+
+终局事件不再只显示一个“继续”按钮。网页快照读取原版 `TheArchitect` 当前 `AncientDialogueLine` 的本地化文本与说话人，网页按对白块显示；原版当前选项中的 `.next` 文案继续作为点击操作，例如“威胁”“回答”“继续”。这些分支和台词由 `TheArchitect.LoadDialogue()` 按原版角色胜场/总胜场与事件 RNG 选择，不由网页硬编码。点击后仍执行原版 `EventOption` 的 `AdvanceDialogue()`；末句由原版 `WinRun()` 和 `ActChangeSynchronizer` 结束旅程。
+
+TestMode/headless 的首句在原版 `OnRoomEnter()` 中会先清空当前选项，等待 `PlayCurrentLine()` 从战斗场景找到说话 Creature。网页 Host 没有这套对白场景，建筑师首句因无法取得说话 Creature 而没有恢复按钮。现在只在终局事件、TestMode、首行且原版选项为空时，通过反射调用原版 `CreateOptionForCurrentLine()` 并交回原版 `EventModel.SetEventState()`；不合成或改写台词。来源和边界已写入 `docs/sources.md`、`docs/engine-coverage.md`、`docs/interface.md`。
+
+`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 警告、0 错误；`node --check web/app.js` 与 `git diff --check` 通过。当前 `runtime/Main.cs` / Godot Mono assembly SHA-256：`5a508f4a83ecdd78bab8c285882f8445d0036bdb75f1c21fb3ac6e45285f75fd` / `36a249f5972809f013414f73cde282d274c6cb46be99aeba602aea5362fc00f6`。本轮未运行游戏/玩法测试，也未启动浏览器；终局对白逐句点击、末句胜利结算及视觉布局仍待实际回归，不能据此宣称完整终局或 1:1。运行时变更需重启网页规则服务后载入。
+
+## 49. 终局后主菜单入口恢复（2026-09-28）
+
+用户报告建筑师对白结束、回到开始菜单后所有入口都不可点击。原版 `NMainMenu.UpdateTimelineButtonBehavior()` 在无 run 存档且存在待揭示 Epoch 时要求先进入 Timeline，并禁用单人/多人/百科入口；网页尚未实现 Timeline 页面，而原前端也把 Timeline 项设为禁用，因此单人模式成为唯一应有的继续入口，却被原版门槛一起锁死。
+
+`runtime/Main.cs` 现让无进行中存档时的单人模式入口保持可用。已结束一局时点击该入口仍按原版 `Progress.NumberOfRuns` 进入模式选择，再通过标准模式到角色选择。此适配不会调用 `RevealEpoch()`、自动揭示任何进度或清除待处理节点；网页 Timeline 页面和原版揭示交互仍未实现。依据与限制已同步到 `docs/sources.md`、`docs/engine-coverage.md` 和 `docs/interface.md`。
+
+验证：`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 警告、0 错误；`git diff --check` 通过。最新 `runtime/Main.cs` / Godot Mono assembly SHA-256 为 `bfc93e8f99747516723d107d2510c45a4aa8b1e567882395107f81950f9a7631` / `e7e8ec5872dec511937a5b669680a305716a5508fe8a4865cc8510bf21a19cc0`。没有运行游戏流程或推进存档，因此这次确认的是构建与代码路径，不是建筑师结算到菜单的端到端回归；需要重启规则服务以加载新程序集。
+
+## 50. 静默猎手未解锁时的原版角色选择显示（2026-09-28）
+
+用户指出角色选择页显示“已满足揭示条件：以铁甲战士完成一局游戏来揭示这个历史节点”不是原版角色详情。核对 `.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect/NCharacterSelectButton.cs` 与 `NCharacterSelectScreen.cs`：原版锁定角色按钮使用锁定图标；选中资料名为“锁定”，简介来自 `CharacterModel.GetUnlockText()`（静默猎手原文本“进行一局游戏来解锁这个角色。”），HP/金币显示 `??/??` / `???`，遗物名与描述使用“未知遗物”文本，启程按钮禁用。Epoch 的完成条件属于时间线节点提示，不显示在角色详情中。
+
+网页快照现在在角色未解锁时只暴露并显示原版锁定分支数据；前端不再泄露角色实际名称、描述、开局属性、遗物或 Epoch 条件，也不再提供非原版的“揭示并开始”角色选择按钮。已解锁状态仍显示原版角色资料和可用开局按钮。原版 Timeline UI 尚未实现，`unlock silent` 命令保留为原版 `SaveManager` 解锁流程的宿主入口；角色页本身不代替时间线揭示。
+
+网页静态资源版本更新为 `20260928-character-lock-1`。`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功（0 警告、0 错误）；`node --check web/app.js` 与 `git diff --check` 通过。`runtime/Main.cs` / Godot Mono assembly SHA-256 为 `2af20674340a0c1c746849d8d8556c32edd23ed518e4be851c1c6f4381c4d5b4` / `9219828b7f830c965141a2b8f998d9c1efed3ff58f363b31c9938f1dd16cf6fa`。未进行游戏流程测试或视觉验收，需刷新网页并重启规则服务载入新程序集。Timeline 页面未实现时，解锁仍需运行 `unlock silent`。
+
+## 51. 旅程中右侧栏放弃入口（2026-09-28）
+
+用户澄清需要的是进入旅程后的右侧放弃入口，不是改变开始菜单布局。原版 `.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.PauseMenu/NPauseMenu.cs` 在暂停菜单显示本地化“放弃”，并按 `RunManager.IsInProgress` / `IRunState.IsGameOver` 控制可用性；点击会打开原版确认框，确认后调用 `RunManager.Abandon()`。简体中文按钮文案为 `gameplay_ui.PAUSE_MENU.GIVE_UP`。
+
+网页在右侧栏加入“放弃”按钮，仅旅程进行中显示；状态快照沿用原版运行中/结束判定，确认框使用现有原版本地化文本，确认后提交已有 `abandon` 命令，由 headless 桥的原版存档进度和历史 API 记录失败并结束旅程。网页没有原版暂停菜单，因此入口位置属于网页适配，不代表暂停页面完整复刻。撤销了上一轮对开始菜单继续/放弃按钮的并排改动。静态资源版本为 `20260928-run-abandon-sidebar-1`。`node --check web/app.js` 与 `git diff --check` 通过；未运行游戏端到端流程。
+
+## 52. 放弃结算与静默猎手时间线解锁（2026-09-28）
+
+用户指出通过原版“放弃”快速结束对局后应能解锁后续角色。源码核对确认：游戏内确认走 `RunManager.Abandon()`，将 `IsAbandoned` 设为真并通过 `CreatureCmd.Kill(..., force:true)` 结束角色；`CreatureCmd` 在非 TestMode 才自动调用 `RunManager.OnEnded(false)`。本项目固定运行无窗口 TestMode，旧命令则绕过了原版 abandon 及 end 流程，直接写统计和历史。
+
+`runtime/Main.cs` 的活动旅程 `abandon` 现在调用原版 `RunManager.Abandon()`；死亡动作结算后 `RecordHeadlessDefeatIfNeeded()` 调用原版 `RunManager.OnEnded(false)`，由 `ProgressSaveManager` 记录失败局和 `RunHistoryUtilities` 写历史。没有内存 Run 时的已存档菜单放弃路径保留原版进度更新/历史调用。对局结束后，若原版 `GetRevealableEpochs()` 与铁甲战士标准对局记录均满足，菜单自动进入仅支持静默猎手的可点击时间线节点；显示原版 `SILENT1_EPOCH.title`、`unlockInfo` 和“解锁”本地化。点击通过 `SaveManager.RevealEpoch()` 并写入 `Silent1Epoch.QueueUnlocks()` 对应的 pending character 与 timeline expansion 存档状态。旧 `unlock silent` 命令保留为兼容入口。
+
+网页没有复刻完整 Timeline 场景、其它节点、人物揭示演出或动画；实现范围不代表完整 1:1。源码依据记在 `docs/sources.md`，覆盖边界记在 `docs/engine-coverage.md`。网页静态资源版本为 `20260928-abandon-unlock-1`。
+
+验证：`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 警告、0 错误；`node --check web/app.js` 与 `git diff --check` 通过。`runtime/Main.cs` / Godot Mono assembly SHA-256：`3c71794a942e78a532e2721ac94be3142fb6668bab996540b6851f1f6dbb1f86` / `d508f872892218a9966ab416f405d32d11cd4e0f6cf2b54f2ef7ad57d0d79e7b`。本轮未运行玩法测试、未点击实际浏览器界面或推进存档；放弃到失败计数、时间线显示、静默猎手解锁仍须在网页中实测。本轮修改不是 1:1 流程通过的证据；运行时变更需重启规则服务并刷新网页载入。
+
+## 53. 放弃后清理残留运行存档备份（2026-09-28）
+
+用户反馈在旅程中点击放弃后仍无法解锁静默猎手。检查最新服务日志 `.cache/service-logs/godot-MPQznrzV3-j-.log`：`RunManager.OnEnded(false)` 已写入 `progress.save`，并由 `RunHistoryUtilities` 写入失败历史；但 `SaveManager.DeleteCurrentRun()` 删除 `profile1/saves/current_run.save.backup` 报错。原版 `RunSaveManager.HasRunSave` 会把该备份继续视作可继续旅程，网页因此没有进入待揭示角色节点。日志同时有 `RunManager.AbandonInternal()` 的 headless UI 空引用；异常被原版捕获，随后仍完成失败结算及进度/历史写入，和阻塞解锁入口的残留备份是两个独立现象。
+
+`runtime/Main.cs` 的 `RecordHeadlessDefeatIfNeeded()` 现在在原版 `RunManager.OnEnded(false)` 结束后调用 `DeleteCurrentRunSaveFiles()`；菜单已有存档的放弃路径也复用此清理。它先调用原版 `SaveManager.DeleteCurrentRun()`，再使用 `GetProfileScopedPath()` + `ProjectSettings.GlobalizePath()` 删除当前 profile 的主存档及 `.backup`，跨帧最多重试 5 次，并以原版 `HasRunSave` 验证已清空；若仍有文件则报告错误，不静默进入角色揭示流程。菜单清除路径按 `SerializableRun.StartTime` 检查原版 `${StartTime}.run` 历史，已结算的旧存档只清理文件、不重复增加失败次数或历史。此处只修复 headless 删除失败，不更改原版完成局数或揭示规则。
+
+重新构建 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 警告、0 错误；`node --check web/app.js` 与 `git diff --check` 通过。`runtime/Main.cs` / Godot Mono assembly SHA-256：`4d248b6fc0df5cd3028f8f5604c3d2500433b8bc9011fe0ff49bdb23d0f456d0` / `b402bba2e19675daec309558d47008c5d470155ebbb202f1025ec3599ac91bf5`。本轮未重放实际网页操作或运行玩法测试。当前 shell 因系统权限限制，不能用 `ps` 检查或重启已运行的规则服务；需重启规则服务载入新程序集。若重启后主菜单仍显示旧存档的“继续/放弃当前游戏”，点主菜单放弃可安全清除它（按原版历史 `StartTime` 去重，不重复计数）；随后应显示待揭示节点，点“揭示”后静默猎手才可选。若仍不出现，再核对该服务使用的 profile 与进度文件，而非手动改解锁条件。
+
+## 54. 按原版过期存档判定解锁时间线（2026-09-28）
+
+用户再次反馈放弃后仍未看到静默猎手。最新两份服务日志 `.cache/service-logs/godot-5EKHY43Pl8jF.log`、`.cache/service-logs/godot-EJ7PXFNsSPTk.log` 证实此前编译确实被加载：`RunManager.OnEnded(false)` 各自写入失败进度和历史，但原版 `GodotFileIo.DeleteFile` 删除 `current_run.save` / `.backup` 持续报错。因此第 53 节的直接文件删除修补不足；`Publish()` 仍直接使用原版 `HasRunSave`，把已完成的旧存档当成进行中的旅程，继续隐藏时间线节点。
+
+源码 `.cache/source/MegaCrit.Sts2.Core.Saves/SaveManager.cs` 的 `CleanupStaleCurrentRunSaveForProfile()` 明确按存档 `start_time` 查找 `${StartTime}.run`，有对应历史就判定为过期并尝试清除。因此 `runtime/Main.cs` 新增 `HasPendingRunSave()`：对主存档（不存在时才检查备份）读取 `start_time`，确认同名原版历史存在后，将其从继续/放弃/单人模式的 UI 存档门槛中排除；同时比对历史和存档中的 seed，避免只因时间戳重合就隐藏有效旅程。当前进程刚调用过原版 `RunManager.OnEnded(false)` 时，也会把残留存档视为已结算。底层清理仍继续尝试，但删除错误不会再挡住揭示入口。`Prompt()`、新旅程/继续命令和菜单快照统一走这一有效存档判定。放弃菜单清理仍通过历史名去重，不会重复累计失败。
+
+重新构建 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 警告、0 错误；`node --check web/app.js` 和 `git diff --check` 通过。`runtime/Main.cs` / Godot Mono assembly SHA-256：`324a7a2dd15828b139d6a9193d5b491d5ca4c1199bf5d406b1e1aa946f7536b1` / `07a19747acd65ade5faf92c0e9c2667e1f2d3d4b6d00af31a15ce9a1a3afbcca`。尚未重放实际网页操作；需要重启规则服务加载程序集后复查。如果揭示节点仍不出现，应在该次服务日志中核对存档 seed、`StartTime` 历史匹配和静默猎手 Epoch 状态，不再反复放弃开局。
+
+## 55. 修正放弃后的时间线菜单跳转并复测（2026-09-28）
+
+用户再次反馈放弃后仍不能解锁猎手。最新日志 `.cache/service-logs/godot-_rOCgya0l3ub.log` 显示 `RunManager.AbandonInternal()` 在关闭 headless UI 节点时抛出 `NullReferenceException`，但原版方法捕获该异常后仍将旅程标为放弃并击杀玩家；之后桥接调用 `RunManager.OnEnded(false)`，失败进度和 `.run` 历史均写入。物理删除 current run 文件仍可能报错，当前存档判定已通过“同 StartTime 历史存在”将其视为已结束。隔离运行态复现中，放弃后局数增加、时间线强制打开且包含猎手 Epoch，说明这次空引用没有阻止败局结算。
+
+隔离存档复现确认：`abandon` 后 `Progress.NumberOfRuns` 为 1、静默猎手仍按原版规则保持锁定，但 `mainMenu.timelineForced=true` 且存在 `SILENT1_EPOCH` 揭示项；点击揭示后角色解锁，并能以原版 70 HP、99 金币、12 张起始牌和“蛇之戒指”开始。注意放弃本身不会直接让猎手变为可选：原版先显示“迷雾压境”时间线节点，玩家还要点击“解锁”揭示 `SILENT1_EPOCH`。另外修正网页从主菜单放弃“已恢复的存档旅程”时的视图顺序：若命令返回状态要求强制打开时间线，确认回调必须保留时间线视图，不能再重置到开始菜单。资源版本更新为 `20260928-abandon-unlock-2`。
+
+修正了 `tests/silent_character_smoke.py`：之前复用默认持久化测试存档，并断言旧快照中已经移除的 `unlockAvailable` 字段，失败并不能说明解锁功能；现在每次使用独立 `res://.cache/spirecli-silent-character-smoke-*` 存档，覆盖铁甲战士开局、活动旅程放弃、重启后从主菜单放弃已存档旅程、时间线揭示与静默猎手开局。`python3 tests/silent_character_smoke.py --timeout 90` 通过；两个放弃路径均记录 1 局败局并打开 Epoch 揭示项，揭示后静默猎手可以开局。`node --check web/app.js`、`git diff --check` 通过。此轮没有改动 C#，无需重编译或重启 Godot 规则服务；刷新网页载入新版静态资源。隔离烟测验证了原版引擎结算与角色揭示路径，没有做真实浏览器点击验收，也未把 headless UI 空引用说成完整正常原版调用。
+
+之后核查启动命令时确认另一项会挡住揭示入口的环境差异：`.cache/source/MegaCrit.Sts2.Core.Debug/DebugSettings.cs` 将 `DevSkip` 定义为 `Environment.GetEnvironmentVariable("STS2_DEV_SKIP") != null`，不解析变量值；`server.py` 原先复制服务端环境启动 Godot，因此 `STS2_DEV_SKIP=0 python3 server.py` 也会让原版 `NMainMenu.UpdateTimelineButtonBehavior()` 跳过强制时间线。当前 `_godot_host_environment()` 在启动每个 Godot Host 前移除此变量。隔离 smoke 对传入值 `0` 的环境构造做了断言；`tests/http_smoke.py` 也加入带该变量启动服务并验证放弃/揭示的回归，但本轮执行在 `free_port()` 绑定 `127.0.0.1` 时被沙箱以 `PermissionError` 拒绝，未到 HTTP 服务启动阶段。当前交互 shell 未设置该变量，且没有运行中的默认 8765 服务可检查旧服务环境，因此不能认定用户此前那次一定由启动环境触发；现在网页服务会对此作防护。此次服务端与测试 Python 文件通过 `py_compile`，前端通过 `node --check`，补丁通过 `git diff --check`。
+
+## 56. 放弃异步流程兜底与重启存档回归（2026-09-28）
+
+用户澄清：游戏中点击放弃返回菜单后，菜单仍把旅程当作待处理存档，只能放弃而无法继续/揭示。隔离持久存档回放中，原版 `RunManager.Abandon()` 在 headless UI 节点关闭时会记录空引用；测试环境的大部分路径随后仍能正常死亡、结算与清理。为覆盖可能没有完成 `GuaranteeKillAllPlayers()` 的延迟/异常分支，`Settle()` 现在最多等待 120 帧；若放弃仍待处理、玩家存活且无正在结算的动作，则以原版 `CreatureCmd.Kill(player.Creature, force:true)` 补完死亡，再调用已有 `RunManager.OnEnded(false)` 与 current-run 清理。若原版 `IsAbandoned` 标记或玩家状态缺失，会保留存档并明确报错，不伪造完成局数。
+
+将 `tests/silent_character_smoke.py` 扩展为活动旅程放弃后关闭并重启 Godot，再检查 `hasRunSave=false`、菜单不显示“继续/放弃当前游戏”、猎手 Epoch 仍待揭示。`python3 tests/silent_character_smoke.py --timeout 90` 通过，含重启检查；同时覆盖揭示后以静默猎手开局。`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 警告、0 错误；`node --check web/app.js` 与 `git diff --check` 通过。隔离流程中原版击杀及时完成，超时兜底分支没有被触发；当前沙箱也不能连接用户正在运行的本机 127.0.0.1 服务，所以尚未验证用户旧服务/旧页面的实时状态。必须重启 `server.py` 让已加载的 Godot Host 使用新程序集；之后若菜单仍显示旧旅程的放弃项，再用菜单“放弃当前游戏”清除过期存档，正常结束的旅程应进入时间线揭示页，而不会提供继续该局。
+
+## 57. 迁移旧档中未获得的静默猎手时间线节点（2026-09-28）
+
+用户再次说明放弃后仍未解锁角色。检查当前真实 `progress.save` 发现铁甲战士已有对局记录，但 `SILENT1_EPOCH` 条目已存在、状态仍为 `not_obtained`。断点在 `EnsureTerminalTimelineProgress()`：它此前只在 epoch 条目完全缺失时复现 Neow 的 `QueueUnlocks()`，而真实档案已由 Neow 时间线扩展创建了 `NotObtained` 占位，所以每次启动都跳过 `ObtainEpochOverride(..., ObtainedNoSlot)`；扩展循环也只会把 `ObtainedNoSlot` 变为 `Obtained`。因此原版失败局记录正确写入，却没有可揭示的猎手 Epoch。
+
+现在启动时会把 Silent epoch 缺失、`None`、`NoSlot` 或 `NotObtained` 状态迁移到 `ObtainedNoSlot`，随后照原版 `EpochModel.QueueTimelineExpansion()` 规则开放 `Obtained` 槽位；已获得或揭示的状态不会回退。`tests/silent_character_smoke.py` 新增旧档迁移夹具。最新构建 0 警告、0 错误；烟测通过迁移旧 `not_obtained` 节点、活动放弃、重启后时间线强制显示、揭示 Epoch 以及猎手开局。另将真实 `progress.save` 只读复制到隔离 `res://.cache/spirecli-*` 路径回放，确认启动迁移后会显示 `SILENT1_EPOCH`；角色在揭示前仍锁定，执行原版 Epoch 揭示后可选。未改动真实存档。
+
+修复已编译到 `runtime/.godot/mono/temp/bin/Debug/SpireCli.dll`。当前运行中的 `server.py`/Godot Host 不会热加载 DLL，需用原命令重启服务；用户现有档案将在下次 Host 初始化时自动迁移，无需再放弃一局。原版解锁仍包含 Timeline 节点“解锁”交互；放弃计为完成/失败对局并使节点出现，不会跳过原版揭示步骤。网页实时状态无法在沙箱中连接本机 127.0.0.1 验证。

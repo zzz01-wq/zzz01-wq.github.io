@@ -11,6 +11,17 @@
   const intentDialog = $("#intent-dialog");
   const intentDialogTitle = $("#intent-dialog-title");
   const intentDialogContent = $("#intent-dialog-content");
+  const cardPreviewDialog = $("#card-preview-dialog");
+  const cardPreviewTitle = $("#card-preview-title");
+  const cardPreviewBody = $("#card-preview-body");
+  const cardPreviewActions = $("#card-preview-actions");
+  const runControls = $("#run-controls");
+  const runAbandonButton = $("#run-abandon");
+  const runAbandonDialog = $("#run-abandon-dialog");
+  const runAbandonTitle = $("#run-abandon-title");
+  const runAbandonBody = $("#run-abandon-body");
+  const runAbandonConfirm = $("#run-abandon-confirm");
+  const runAbandonCancel = $("#run-abandon-cancel");
   const scrollArea = $("#scroll-area");
   const commandLog = $("#command-log");
   const commandHistoryList = $("#command-history-list");
@@ -35,8 +46,9 @@
   const mapZoomLabel = $("#map-zoom-label");
   const mapCloseButton = $("#map-close");
   const choice = $("#choice");
+  const routePreview = $("#route-preview");
   const hand = $("#hand");
-  const commands = ["help", "status", "look", "new", "play", "end", "choose", "take", "skip", "back", "map", "move", "proceed", "shop", "buy", "potion", "discard-potion", "hand", "deck", "draw", "discard", "exhaust", "relics", "potions", "inspect", "cards", "abandon", "clear"];
+  const commands = ["help", "status", "look", "new", "unlock", "reveal", "play", "end", "choose", "take", "skip", "back", "map", "move", "proceed", "shop", "buy", "potion", "discard-potion", "scry", "hand", "deck", "draw", "discard", "exhaust", "relics", "potions", "inspect", "cards", "abandon", "clear"];
   const readOnlyWhileBusy = new Set(["help", "status", "look", "map", "hand", "deck", "draw", "discard", "exhaust", "relics", "potions", "inspect", "cards", "shop"]);
   const routeLabels = {Monster:"普通战斗", Elite:"精英战", Boss:"首领", Event:"事件", Unknown:"未知", Treasure:"宝箱", RestSite:"休息处", Shop:"商店", Ancient:"幕首事件", Unassigned:"未分配"};
   const routeMarks = {Monster:"战", Elite:"精", Boss:"首", Event:"事", Unknown:"?", Treasure:"宝", RestSite:"休", Shop:"商", Ancient:"古", Unassigned:"·"};
@@ -52,7 +64,10 @@
   let connected = false;
   let submitting = false;
   let composing = false;
-  let interactionStarted = false;
+  let startMenuView = "landing";
+  let characterParentView = "landing";
+  let selectedCharacterId = "ironclad";
+  let timelineAutoKey = "";
   let retryCount = 0;
   let retryTimer = 0;
   let history = readHistory();
@@ -159,6 +174,151 @@
   }
   function value(x, fallback) {
     return x === undefined || x === null || x === "" ? (fallback || "") : String(x);
+  }
+  function menuButton(label, action, className, disabled = false) {
+    const button = el("button", className || "menu-button", label);
+    button.type = "button";
+    button.dataset.menuAction = action;
+    button.disabled = Boolean(disabled || !connected || submitting);
+    return button;
+  }
+  function menuEntry(label, action, options = {}) {
+    const button = el("button", "start-menu-entry" + (options.primary ? " is-primary" : "") + (options.disabled ? " is-unavailable" : ""));
+    button.type = "button";
+    button.dataset.menuAction = action;
+    button.disabled = Boolean(options.disabled || !connected || submitting);
+    button.append(el("span", "start-menu-entry-copy"));
+    button.firstElementChild.append(el("strong", "start-menu-entry-title", label));
+    if (options.description) button.firstElementChild.append(el("span", "start-menu-entry-description", options.description));
+    if (options.locked) button.classList.add("is-locked");
+    return button;
+  }
+  function renderWelcome(s) {
+    const ended = s.phase === "victory" || s.phase === "defeat";
+    const showMenu = !s.player || ended;
+    welcome.hidden = !showMenu;
+    if (!showMenu) return;
+    const characters = Array.isArray(s.characters) ? s.characters : [];
+    if (!characters.some((character) => character.id === selectedCharacterId)) selectedCharacterId = "ironclad";
+    welcome.replaceChildren();
+    welcome.dataset.view = startMenuView;
+    const mainMenu = s.mainMenu || {};
+    const labels = s.mainMenuLabels || {};
+    const modes = s.modeOptions || {};
+    const abandonConfirmation = s.abandonConfirmation || {};
+    const title = startMenuView === "confirm-abandon"
+      ? (abandonConfirmation.header || "你确定吗？")
+      : startMenuView === "timeline" ? (labels.timeline || "时间线") : "";
+    if (title) {
+      const heading = el("div", "start-menu-heading");
+      heading.append(el("h2", "", startMenuView === "confirm-abandon" && ended ? "旅程已结束" : title));
+      welcome.append(heading);
+    }
+
+    if (startMenuView === "landing") {
+      const layout = el("div", "start-menu-layout");
+      const nav = el("nav", "start-menu-nav");
+      nav.setAttribute("aria-label", "主菜单");
+      if (mainMenu.continueVisible && s.hasRunSave) {
+        nav.append(menuEntry(labels.continueGame || "继续游戏", "continue", {primary:true}));
+      }
+      if (mainMenu.abandonVisible && s.hasRunSave) {
+        nav.append(menuEntry(labels.abandonRun || "放弃当前游戏", "abandon-run"));
+      }
+      if (mainMenu.singleplayerVisible && !s.hasRunSave) {
+        nav.append(menuEntry(labels.singleplayer || "单人模式", "singleplayer", {
+          primary:true, disabled:mainMenu.singleplayerEnabled === false
+        }));
+      }
+      nav.append(menuEntry(labels.multiplayer || "多人模式", "unavailable", {disabled:true}));
+      if (mainMenu.timelineVisible) nav.append(menuEntry(labels.timeline || "时间线", "timeline", {disabled:mainMenu.timelineEnabled !== true}));
+      nav.append(menuEntry(labels.settings || "设置", "unavailable", {disabled:true}));
+      if (mainMenu.compendiumVisible) nav.append(menuEntry(labels.compendium || "百科大全", "unavailable", {disabled:true}));
+      nav.append(menuEntry(labels.quit || "退出", "unavailable", {disabled:true}));
+      layout.append(nav);
+      welcome.append(layout);
+    } else if (startMenuView === "modes") {
+      const top = el("div", "start-menu-subhead");
+      top.append(menuButton("返回", "back", "menu-button menu-back"));
+      welcome.append(top);
+      const modeGrid = el("div", "mode-menu-grid");
+      const standard = modes.standard || {title:"标准模式", description:""};
+      const daily = modes.daily || {title:"每日挑战", description:"", unlocked:false};
+      const custom = modes.custom || {title:"自定模式", description:"", unlocked:false};
+      modeGrid.append(menuEntry(standard.title, "standard", {primary:true, description:standard.description}));
+      modeGrid.append(menuEntry(daily.title, "unavailable", {
+        description:daily.description, disabled:true, locked:!daily.unlocked
+      }));
+      modeGrid.append(menuEntry(custom.title, "unavailable", {
+        description:custom.description, disabled:true, locked:!custom.unlocked
+      }));
+      welcome.append(modeGrid);
+    } else if (startMenuView === "timeline") {
+      const top = el("div", "start-menu-subhead");
+      top.append(menuButton("返回", "back", "menu-button menu-back"));
+      welcome.append(top);
+      const epochs = Array.isArray(s.timelineCharacterUnlocks) ? s.timelineCharacterUnlocks : [];
+      const list = el("nav", "start-menu-nav timeline-unlock-list");
+      list.setAttribute("aria-label", labels.timeline || "时间线");
+      epochs.forEach((epoch) => {
+        const entry = menuEntry(value(epoch.title, "历史节点"), "reveal-epoch", {description:epoch.unlockInfo});
+        entry.dataset.epochId = value(epoch.id);
+        entry.append(el("span", "start-menu-entry-action", value(epoch.revealLabel, "解锁")));
+        list.append(entry);
+      });
+      if (epochs.length) welcome.append(list);
+    } else if (startMenuView === "characters") {
+      const top = el("div", "start-menu-subhead");
+      top.append(menuButton("返回", "back", "menu-button menu-back"));
+      welcome.append(top);
+      const grid = el("div", "character-choice-grid");
+      characters.forEach((character) => {
+        const selected = character.id === selectedCharacterId;
+        const button = el("button", "character-choice" + (selected ? " is-selected" : "") + (character.unlocked ? "" : " is-locked"));
+        button.type = "button";
+        button.dataset.character = value(character.id);
+        button.setAttribute("aria-pressed", selected ? "true" : "false");
+        button.append(el("strong", "character-choice-name", value(character.name, character.id)));
+        if (character.unlocked) {
+          button.append(el("span", "character-choice-stats", "生命 " + value(character.hp, "—") + "　·　" + value(character.gold, "—") + " 金币　·　起始牌 " + value(character.deckSize, "—") + " 张"));
+        }
+        grid.append(button);
+      });
+      welcome.append(grid);
+      const selected = characters.find((character) => character.id === selectedCharacterId) || characters[0];
+      if (selected) {
+        const details = el("section", "selected-character");
+        const charHeading = el("div", "selected-character-heading");
+        charHeading.append(el("div", "selected-character-name", value(selected.name)));
+        charHeading.append(el("div", "selected-character-stats", selected.unlocked
+          ? "生命 " + value(selected.hp) + "　·　金币 " + value(selected.gold) + "　·　起始牌 " + value(selected.deckSize) + " 张"
+          : "生命 " + value(selected.hp) + "　·　金币 " + value(selected.gold)));
+        details.append(charHeading);
+        details.append(el("p", "selected-character-description", value(selected.description)));
+        if (selected.relic) {
+          const relic = el("div", "starting-relic");
+          relic.append(el("b", "", (selected.unlocked ? "初始遗物　" : "") + value(selected.relic)));
+          if (selected.relicDescription) relic.append(el("span", "", value(selected.relicDescription)));
+          details.append(relic);
+        }
+        if (selected.unlocked) {
+          const action = el("div", "selected-character-action");
+          action.append(menuButton("以" + value(selected.name) + "开始", "start", "menu-button menu-primary"));
+          details.append(action);
+        }
+        welcome.append(details);
+      }
+    } else if (startMenuView === "confirm-abandon") {
+      const confirm = el("section", "menu-confirm-panel");
+      confirm.append(el("p", "", abandonConfirmation.body || "放弃游戏会被视为本局失败。"));
+      const actions = el("div", "selected-character-action");
+      actions.append(menuButton(abandonConfirmation.confirm || "好的", "confirm-abandon", "menu-button menu-primary"));
+      actions.append(menuButton(abandonConfirmation.cancel || "不了", "cancel-abandon", "menu-button menu-secondary"));
+      confirm.append(actions);
+      welcome.append(confirm);
+    }
+    if (s.messageError && Array.isArray(s.messages) && s.messages.length)
+      welcome.append(el("p", "menu-error", s.messages.join("\n")));
   }
   function cardTypeLabel(type) {
     return value(type).trim();
@@ -620,13 +780,15 @@
     return {x:mapped.x,y:mapped.y};
   }
   function updateStatus(s) {
+    updateRunControls(s);
     const player = s.player;
     $("#location").textContent = value(s.location, player ? "尖塔" : "尖塔入口");
     if (!player) {
       $("#stage").textContent = "等待启程";
-      $("#player-name").textContent = "战士";
+      $("#player-name").textContent = "铁甲战士";
+      $("#player-class").textContent = "铁甲";
       $("#seed").textContent = "SEED —";
-      $("#character-status").replaceChildren(el("div", "empty-status", "尚未踏入尖塔"), el("span", "empty-status-note", "输入 new ironclad 开始"));
+      $("#character-status").replaceChildren(el("div", "empty-status", "尚未踏入尖塔"));
       syncAllyTargetState(s);
       $("#relic-count").textContent = "—";
       $("#relics").replaceChildren(el("span", "muted", "旅程开始后显示"));
@@ -642,6 +804,7 @@
     if (s.phase) parts.push(phaseLabels[s.phase] || String(s.phase));
     $("#stage").textContent = parts.join(" · ") || "旅程进行中";
     $("#player-name").textContent = value(player.name, "战士");
+    $("#player-class").textContent = player.character === "silent" ? "猎手" : "铁甲";
     $("#seed").textContent = "SEED " + value(s.seed, "—");
 
     const status = el("div", "character-readout");
@@ -700,20 +863,37 @@
       potionList.append(row);
     });
   }
+  function updateRunControls(s) {
+    const abandon = s && s.runAbandon ? s.runAbandon : {};
+    runControls.hidden = !Boolean(s && s.player && abandon.visible);
+    runAbandonButton.textContent = value(abandon.label, "放弃");
+    runAbandonButton.disabled = !connected || submitting || Boolean(s && s.busy) || abandon.enabled !== true;
+    const confirmation = s && s.abandonConfirmation ? s.abandonConfirmation : {};
+    runAbandonTitle.textContent = value(confirmation.header, "你确定吗？");
+    runAbandonBody.textContent = value(confirmation.body, "放弃游戏会被视为本局失败。");
+    runAbandonConfirm.textContent = value(confirmation.confirm, "好的");
+    runAbandonCancel.textContent = value(confirmation.cancel, "不了");
+    runAbandonConfirm.disabled = !runAbandonDialog.open || !connected || submitting
+      || Boolean(s && s.busy) || abandon.enabled !== true;
+  }
   function renderEncounter(s) {
     encounter.replaceChildren();
     const enemies = Array.isArray(s.enemies) ? s.enemies : [];
     const combat = s.combat && typeof s.combat === "object" ? s.combat : null;
     const isBoss = Boolean(combat && combat.isBoss);
-    encounter.hidden = enemies.length === 0 && !isBoss;
+    const combatActive = Boolean(combat && combat.active);
+    const autoPlayedCards = Array.isArray(combat && combat.autoPlayedCards)
+      ? combat.autoPlayedCards.filter((name) => typeof name === "string" && name.trim()) : [];
+    const showEncounter = enemies.length > 0 || combatActive;
+    encounter.hidden = !showEncounter && autoPlayedCards.length === 0;
     if (encounter.hidden) return;
-    encounter.append(sectionHeading(isBoss ? "首领战" : "敌方单位", enemies.length ? enemies.length + " 个" : "准备中"));
-    if (isBoss && combat && combat.name) {
+    if (showEncounter) encounter.append(sectionHeading(isBoss ? "首领战" : "敌方单位", enemies.length ? enemies.length + " 个" : "准备中"));
+    if (showEncounter && isBoss && combat && combat.name) {
       encounter.append(el("div", "boss-title", combat.name));
     }
-    if (!enemies.length) return;
-    const list = el("div", "enemies");
-    enemies.forEach((enemy, enemyPosition) => {
+    if (enemies.length) {
+      const list = el("div", "enemies");
+      enemies.forEach((enemy, enemyPosition) => {
       const enemyIndex = enemy && enemy.index !== undefined && enemy.index !== null
         ? String(enemy.index) : String(enemyPosition + 1);
       const canTargetEnemy = Boolean(targetingCard && targetingCard.targetType === "AnyEnemy" && !s.busy && !submitting);
@@ -732,6 +912,23 @@
       const block = Number(enemy.block) > 0 ? " · 格挡 " + enemy.block : "";
       top.append(el("span", "enemy-hp", "HP " + value(enemy.hp, "—") + " / " + value(enemy.maxHp, "—") + block));
       unit.append(top);
+      const stolenCards = Array.isArray(enemy.stolenCards)
+        ? enemy.stolenCards.filter((card) => card && typeof card === "object") : [];
+      if (stolenCards.length) {
+        const stolen = el("div", "stolen-cards");
+        stolen.append(el("strong", "", "偷走的牌："));
+        stolenCards.forEach((card, cardIndex) => {
+          if (cardIndex) stolen.append(document.createTextNode("、"));
+          const preview = el("button", "stolen-card-link", value(card.name, "卡牌"));
+          preview.type = "button";
+          preview.dataset.stolenCardEnemy = enemyIndex;
+          preview.dataset.stolenCardIndex = String(cardIndex);
+          preview.title = "点击查看卡牌；战斗结束后可决定是否取回";
+          preview.setAttribute("aria-label", "查看被偷走的卡牌：" + value(card.name, "卡牌"));
+          stolen.append(preview);
+        });
+        unit.append(stolen);
+      }
       if (Array.isArray(enemy.intents)) {
         enemy.intents.forEach((intent) => {
           if (intent.hasIntentTip === false) return;
@@ -789,9 +986,15 @@
       } else if (Array.isArray(enemy.powers) && enemy.powers.length) {
         unit.append(el("div", "powers", "状态 · " + enemy.powers.join(" · ")));
       }
-      list.append(unit);
-    });
-    encounter.append(list);
+        list.append(unit);
+      });
+      encounter.append(list);
+    }
+    if (autoPlayedCards.length) {
+      const summary = el("div", "auto-play-summary");
+      summary.append(el("strong", "", "自动打出："), document.createTextNode(autoPlayedCards.join("、")));
+      encounter.append(summary);
+    }
   }
   function cardRow(card, s) {
     const inCombat = s && s.phase === "combat";
@@ -823,18 +1026,144 @@
     row.append(details);
     return row;
   }
+  function openCardPreview(card, options = {}) {
+    if (!card || typeof card !== "object") return;
+    cardPreviewTitle.textContent = value(card.name, "卡牌");
+    cardPreviewBody.replaceChildren();
+    cardPreviewActions.replaceChildren();
+    const meta = el("div", "card-preview-meta");
+    if (card.type) meta.append(el("span", "", cardTypeLabel(card.type)));
+    if (card.cost !== undefined && card.cost !== null) meta.append(el("span", "", card.cost + " 能量"));
+    if (meta.childElementCount) cardPreviewBody.append(meta);
+    const description = el("div", "card-preview-description");
+    appendTextWithTooltips(description, value(card.description), card.hoverTips);
+    cardPreviewBody.append(description);
+    if (options.note) cardPreviewBody.append(el("p", "card-preview-note", options.note));
+    if (options.command) {
+      const take = el("button", "choice-action choice-confirm", value(options.claimLabel, "领取这张牌"));
+      take.type = "button";
+      take.dataset.command = options.command;
+      take.disabled = Boolean(!connected || submitting || (state && state.busy));
+      cardPreviewActions.append(take);
+    }
+    const close = el("button", "choice-action", options.command ? "返回奖励列表" : "关闭");
+    close.type = "button";
+    close.dataset.cardPreviewClose = "true";
+    cardPreviewActions.append(close);
+    if (!cardPreviewDialog.open) cardPreviewDialog.showModal();
+  }
   function renderHand(s) {
     hand.replaceChildren();
     const cards = Array.isArray(s.hand) ? s.hand : [];
-    hand.hidden = cards.length === 0;
-    if (!cards.length) return;
+    const combatTurn = s.phase === "combat";
+    hand.hidden = cards.length === 0 && !combatTurn;
+    if (hand.hidden) return;
     const handHint = targetingCard
       ? (targetingCard.targetType === "AnyAlly" ? "点击战士选择目标" : "点击敌人选择目标")
-      : s.phase === "combat" ? "点击卡牌出牌" : "play 手牌编号";
-    hand.append(sectionHeading("手牌", cards.length + " 张 · " + handHint));
+      : combatTurn ? (cards.length ? "点击卡牌出牌" : "暂无手牌") : "play 手牌编号";
+    const toolbar = el("div", "hand-toolbar");
+    toolbar.append(sectionHeading("手牌", cards.length + " 张 · " + handHint));
+    if (combatTurn) {
+      const endTurn = el("button", "end-turn-button", "结束回合");
+      endTurn.type = "button";
+      endTurn.dataset.command = "end";
+      endTurn.disabled = Boolean(s.busy || !connected || submitting);
+      endTurn.title = s.busy ? "原版动作结算完成后可结束回合"
+        : !connected ? "规则引擎未连接"
+        : submitting ? "命令提交中"
+        : "结束当前回合";
+      toolbar.append(endTurn);
+    }
+    hand.append(toolbar);
+    if (!cards.length) return;
     const list = el("div", "card-list");
     cards.forEach((card) => list.append(cardRow(card, s)));
     hand.append(list);
+  }
+  function renderCrystalSphere(game, s) {
+    if (!game || typeof game !== "object") return null;
+    const panel = el("section", "crystal-sphere-panel");
+    const heading = el("div", "crystal-sphere-heading");
+    heading.append(el("span", "crystal-sphere-title", "水晶球占卜"));
+    if (game.remainingLabel) heading.append(el("span", "crystal-sphere-count", game.remainingLabel));
+    panel.append(heading);
+
+    const remaining = Number(game.remaining) || 0;
+    if (remaining > 0) {
+      if (game.instructionsTitle) panel.append(el("h3", "crystal-sphere-instructions-title", game.instructionsTitle));
+      if (game.instructions) panel.append(el("p", "crystal-sphere-instructions", game.instructions));
+      const tools = el("div", "crystal-sphere-tools");
+      [["small",game.smallLabel],["big",game.bigLabel]].forEach(([tool,label]) => {
+        if (!label) return;
+        const button = el("button", "choice-action crystal-sphere-tool" + (String(game.tool).toLowerCase() === tool ? " is-active" : ""), label);
+        button.type = "button";
+        button.dataset.command = "scry " + tool;
+        button.disabled = Boolean(s.busy || !connected || submitting);
+        button.setAttribute("aria-pressed", String(String(game.tool).toLowerCase() === tool));
+        button.title = value(game.instructions, "选择占卜范围");
+        tools.append(button);
+      });
+      if (tools.childElementCount) panel.append(tools);
+    }
+
+    const cells = Array.isArray(game.cells) ? game.cells : [];
+    const columns = Math.max(1, Number(game.width) || 11);
+    const rows = Math.max(1, Number(game.height) || 11);
+    const board = el("div", "crystal-sphere-board");
+    board.style.setProperty("--crystal-columns", String(columns));
+    board.style.setProperty("--crystal-rows", String(rows));
+    board.setAttribute("role", "group");
+    board.setAttribute("aria-label", "水晶球占卜格子");
+    cells.forEach((cell) => {
+      const x = Number(cell.x);
+      const y = Number(cell.y);
+      if (!Number.isInteger(x) || !Number.isInteger(y)) return;
+      const isHidden = Boolean(cell.hidden);
+      const isItem = cell.itemIndex !== null && cell.itemIndex !== undefined;
+      const button = el("button", "crystal-sphere-cell" + (isHidden ? " is-hidden" : " is-cleared") + (isItem ? " has-item" : ""));
+      button.type = "button";
+      button.style.gridColumn = String(x);
+      button.style.gridRow = String(y);
+      button.dataset.x = String(x);
+      button.dataset.y = String(y);
+      button.disabled = !isHidden || remaining <= 0 || Boolean(s.busy || !connected || submitting);
+      if (isHidden && remaining > 0) button.dataset.command = "scry " + x + " " + y;
+      const label = `第 ${x} 列、第 ${y} 行` + (isHidden ? "，尚未揭开" : isItem ? "，物品已揭示" : "，已揭开");
+      button.setAttribute("aria-label", label);
+      button.title = label;
+      board.append(button);
+    });
+    const revealedItems = Array.isArray(game.revealedItems) ? game.revealedItems : [];
+    revealedItems.forEach((item) => {
+      const tile = el("div", "crystal-sphere-revealed-item");
+      tile.style.gridColumn = `${Number(item.x)} / span ${Number(item.width)}`;
+      tile.style.gridRow = `${Number(item.y)} / span ${Number(item.height)}`;
+      tile.dataset.good = String(Boolean(item.good));
+      tile.textContent = value(item.label, "物品");
+      tile.setAttribute("aria-label", "已揭示：" + value(item.label, "物品"));
+      tile.title = value(item.label, "物品");
+      board.append(tile);
+    });
+    const clearPreview = () => board.querySelectorAll(".crystal-sphere-cell.is-preview").forEach((cell) => cell.classList.remove("is-preview"));
+    const previewFrom = (target) => {
+      const cell = target && target.closest ? target.closest(".crystal-sphere-cell.is-hidden") : null;
+      clearPreview();
+      if (!cell || !board.contains(cell)) return;
+      const x = Number(cell.dataset.x);
+      const y = Number(cell.dataset.y);
+      const big = String(game.tool).toLowerCase() === "big";
+      board.querySelectorAll(".crystal-sphere-cell.is-hidden").forEach((candidate) => {
+        const dx = Math.abs(Number(candidate.dataset.x) - x);
+        const dy = Math.abs(Number(candidate.dataset.y) - y);
+        if (big ? dx <= 1 && dy <= 1 : dx === 0 && dy === 0) candidate.classList.add("is-preview");
+      });
+    };
+    board.addEventListener("pointerover", (event) => previewFrom(event.target));
+    board.addEventListener("pointerleave", clearPreview);
+    board.addEventListener("focusin", (event) => previewFrom(event.target));
+    board.addEventListener("focusout", (event) => { if (!board.contains(event.relatedTarget)) clearPreview(); });
+    panel.append(board);
+    return panel;
   }
   function renderChoices(s) {
     choice.replaceChildren();
@@ -848,22 +1177,32 @@
       selectionDraftKey = nextSelectionKey;
       selectionDraftIndices = new Set();
     }
-    const routes = Array.isArray(s.routes) ? s.routes : [];
-    const showRouteList = routes.length > 0 && mapView.hidden;
     const eventText = value(s.eventText).trim();
+    const eventDialogue = s.eventDialogue && typeof s.eventDialogue === "object" ? s.eventDialogue : null;
     const eventCardResults = Array.isArray(s.eventCardResults) ? s.eventCardResults : [];
-    choice.hidden = !options.length && !actions.length && !showRouteList && !eventText && !eventCardResults.length;
+    const crystalSphere = s.crystalSphere && typeof s.crystalSphere === "object" ? s.crystalSphere : null;
+    choice.hidden = !options.length && !actions.length && !eventText && !eventDialogue && !eventCardResults.length && !crystalSphere;
     if (choice.hidden) return;
     if (options.length) {
-      const optionHeading = (s.phase === "RestSite" || s.phase === "RestSiteRoom") ? "营火行动"
+      const optionHeading = eventDialogue ? "终局对话"
+        : (s.phase === "RestSite" || s.phase === "RestSiteRoom") ? "营火行动"
         : (s.phase === "Treasure" || s.phase === "TreasureRoom") ? "宝箱"
         : (s.phase === "Shop" || s.phase === "MerchantRoom") ? "商店商品" : "当前选项";
       choice.append(sectionHeading(optionHeading, value(s.prompt)));
       if (eventText) choice.append(el("div", "event-text", eventText));
+      if (eventDialogue) {
+        const conversation = el("div", "architect-conversation");
+        if (value(eventDialogue.speaker).trim()) conversation.append(el("div", "architect-speaker", eventDialogue.speaker));
+        conversation.append(el("div", "architect-line", value(eventDialogue.text)));
+        choice.append(conversation);
+      }
       const list = el("div", "option-list");
       options.forEach((option, index) => {
-        const actionable = Boolean(option.command);
-        const row = el(actionable ? "button" : "div", "option" + (option.disabled ? " disabled" : ""));
+        const specialCardReward = (option.kind === "specialCard" || option.kind === "stolenCard")
+          && option.cardPreview && typeof option.cardPreview === "object";
+        const actionable = Boolean(option.command) && !specialCardReward;
+        const rowClass = "option" + (option.disabled ? " disabled" : "") + (specialCardReward ? " special-card-reward" : "");
+        const row = el(actionable ? "button" : "div", rowClass);
         if (actionable) {
           row.type = "button";
           row.dataset.command = option.command;
@@ -893,6 +1232,22 @@
           appendTextWithTooltips(description, option.description, option.hoverTips);
           detail.append(description);
         }
+        if (specialCardReward) {
+          const rewardActions = el("div", "special-reward-actions");
+          const previewButton = el("button", "choice-action", "查看牌面");
+          previewButton.type = "button";
+          previewButton.dataset.cardPreviewIndex = String(option.index || index + 1);
+          previewButton.disabled = Boolean(s.busy || submitting);
+          previewButton.title = "查看被偷卡牌的牌面，再决定是否取回";
+          rewardActions.append(previewButton);
+          const takeButton = el("button", "choice-action choice-confirm", value(option.claimLabel, "领取"));
+          takeButton.type = "button";
+          takeButton.dataset.command = option.command;
+          takeButton.disabled = Boolean(option.disabled || s.busy || !connected || submitting);
+          takeButton.title = "领取原版特殊卡牌奖励";
+          rewardActions.append(takeButton);
+          detail.append(rewardActions);
+        }
         row.append(detail);
         list.append(row);
       });
@@ -900,9 +1255,15 @@
       if (selection && Number(selection.max) > 1) {
         choice.append(el("div", "choice-selection-count", `已选 ${selectionDraftIndices.size} 张 · 本次需选 ${selection.min}–${selection.max} 张`));
       }
-    } else if (eventText || eventCardResults.length) {
-      choice.append(sectionHeading("事件", phaseLabels[s.phase] || value(s.phase)));
+    } else if (eventText || eventDialogue || eventCardResults.length) {
+      choice.append(sectionHeading(eventDialogue ? "终局对话" : "事件", phaseLabels[s.phase] || value(s.phase)));
       if (eventText) choice.append(el("div", "event-text", eventText));
+      if (eventDialogue) {
+        const conversation = el("div", "architect-conversation");
+        if (value(eventDialogue.speaker).trim()) conversation.append(el("div", "architect-speaker", eventDialogue.speaker));
+        conversation.append(el("div", "architect-line", value(eventDialogue.text)));
+        choice.append(conversation);
+      }
     }
     if (eventCardResults.length) {
       const results = el("div", "event-results");
@@ -910,6 +1271,8 @@
       eventCardResults.forEach((result) => results.append(el("div", "event-result", result)));
       choice.append(results);
     }
+    const crystalPanel = renderCrystalSphere(crystalSphere, s);
+    if (crystalPanel) choice.append(crystalPanel);
     const hasMultiSelect = Boolean(selection && Number(selection.max) > 1);
     if (actions.length || hasMultiSelect) {
       const actionList = el("div", "choice-actions");
@@ -936,37 +1299,39 @@
       });
       if (actionList.childElementCount) choice.append(actionList);
     }
-    if (showRouteList) {
-      const section = el("div", "route-section");
-      section.append(sectionHeading(s.canLeave ? "可前往路线" : "路线预览", s.canLeave ? "move 编号" : "完成当前房间后可前往"));
-      const openMap = el("button", "choice-action", "查看地图");
-      openMap.type = "button";
-      openMap.dataset.command = "map";
-      openMap.disabled = Boolean(s.busy || !connected || submitting);
-      openMap.title = "打开可滚动路线图；也可在命令框输入 map";
-      section.append(openMap);
-      const list = el("div", "route-list");
-      routes.forEach((route, index) => {
-        const row = el("button", "route-row");
-        row.type = "button";
-        row.dataset.command = "move " + value(route.index, index+1);
-        row.disabled = !s.canLeave || Boolean(s.busy) || !connected || submitting;
-        row.title = row.disabled ? "完成当前房间后可前往" : "点击立即前往；也可手动输入 " + row.dataset.command;
-        row.setAttribute("aria-label", "立即执行 " + row.dataset.command + "：" + (routeLabels[route.name] || value(route.name, "路线")));
-        row.append(el("span", "option-number", String(route.index || index + 1).padStart(2, "0")));
-        row.append(el("span", "route-name", routeLabels[route.name] || value(route.name, "路线")));
-        row.append(el("span", "route-coord", "(" + value(route.col, "?") + ", " + value(route.row, "?") + ")"));
-        list.append(row);
-      });
-      section.append(list);
-      choice.append(section);
+  }
+  function renderRoutePreview(s) {
+    routePreview.replaceChildren();
+    const routes = Array.isArray(s && s.routes) ? s.routes : [];
+    if (!routes.length || !mapView.hidden) {
+      routePreview.hidden = true;
+      return;
     }
+    routePreview.hidden = false;
+    const openMap = el("button", "route-map-open", "查看地图");
+    openMap.type = "button";
+    openMap.dataset.command = "map";
+    openMap.disabled = Boolean(s.busy || !connected || submitting);
+    openMap.title = "打开可滚动路线图；也可在命令框输入 map";
+    routePreview.append(openMap);
   }
   function applySnapshot(s) {
     validateSnapshot(s);
     const mapWasOpen = mapOpen;
+    const crystalSphereWasVisible = Boolean(state && state.crystalSphere);
     s.eventCardResults = updateEventResults(s);
+    const timelineUnlocks = Array.isArray(s.timelineCharacterUnlocks) ? s.timelineCharacterUnlocks : [];
+    const timelinePending = Boolean(s.mainMenu && s.mainMenu.timelineForced && timelineUnlocks.length);
+    const nextTimelineKey = timelinePending ? timelineUnlocks.map((epoch) => value(epoch.id)).join("|") : "";
+    if (timelinePending && nextTimelineKey !== timelineAutoKey) {
+      startMenuView = "timeline";
+      timelineAutoKey = nextTimelineKey;
+    } else if (!timelinePending) {
+      timelineAutoKey = "";
+      if (startMenuView === "timeline") startMenuView = "landing";
+    }
     state = s;
+    if (crystalSphereWasVisible && !s.crystalSphere) scrollArea.scrollTop = 0;
     syncTargeting(s);
     connected = true;
     retryCount = 0;
@@ -975,14 +1340,15 @@
     const messages = Array.isArray(s.messages) ? s.messages.filter(Boolean) : [];
     setPrompt(s.messageError && messages.length ? messages.join("\n") : value(s.prompt, "输入 help 查看命令"), Boolean(s.messageError && messages.length));
     working.hidden = !submitting;
-    welcome.hidden = Boolean(s.player) || interactionStarted;
+    renderWelcome(s);
     syncMapVisibility(s);
     renderEncounter(s);
     renderMap(s);
     renderHand(s);
     renderChoices(s);
+    renderRoutePreview(s);
     updateStatus(s);
-    [encounter, hand, choice, $("#character-status"), $("#relics"), $("#potions")].forEach(animateState);
+    [encounter, hand, choice, routePreview, $("#character-status"), $("#relics"), $("#potions")].forEach(animateState);
     syncInput();
     if (!mapWasOpen && mapOpen) scheduleMapFocus(true);
   }
@@ -992,7 +1358,7 @@
       const body = await readJson(response);
       if (!response.ok || body.error) throw new Error(value(body.error, "无法读取游戏状态（HTTP " + response.status + "）"));
       applySnapshot(body);
-      if (!quiet) input.focus();
+      if (!quiet && welcome.hidden) input.focus();
     } catch (error) {
       connected = false;
       setConnection("offline", "无法连接规则引擎");
@@ -1033,14 +1399,13 @@
       }
     }
     if (verb === "new" || verb === "continue") {
+      startMenuView = "landing";
       mapOpen = false;
       mapAutoKey = "";
       mapSuppressedKey = "";
       mapChoiceContext = "";
       mapManualKey = "";
     }
-    interactionStarted = true;
-    welcome.hidden = true;
     recordCommand(command);
     addHistory(command);
     input.value = "";
@@ -1049,6 +1414,7 @@
     if (state) {
       renderMap(state);
       renderChoices(state);
+      renderRoutePreview(state);
       renderEncounter(state);
       renderHand(state);
       updateStatus(state);
@@ -1114,18 +1480,36 @@
       submitting = false;
       working.hidden = true;
       if (state) {
+        renderWelcome(state);
         renderMap(state);
         renderChoices(state);
+        renderRoutePreview(state);
         renderEncounter(state);
         renderHand(state);
         updateStatus(state);
       }
       syncInput();
       if (connected) {
-        if (mapView.hidden) input.focus();
+        if (!welcome.hidden) input.blur();
+        else if (mapView.hidden) input.focus();
         else scheduleMapFocus(true);
       }
     }
+  }
+  async function startSelectedCharacter() {
+    const selected = state && Array.isArray(state.characters)
+      ? state.characters.find((character) => character.id === selectedCharacterId)
+      : null;
+    if (!selected) return;
+    if (state.hasRunSave) {
+      startMenuView = "landing";
+      renderWelcome(state);
+      return;
+    }
+    const freshSelection = state && Array.isArray(state.characters)
+      ? state.characters.find((character) => character.id === selectedCharacterId)
+      : null;
+    if (freshSelection && freshSelection.unlocked) await send("new " + freshSelection.id);
   }
   function completeCommand() {
     const match = /^(\s*)([^\s]*)(.*)$/.exec(input.value);
@@ -1164,6 +1548,7 @@
     mapView.hidden = true;
     setMapTool("none");
     renderChoices(state || {});
+    renderRoutePreview(state || {});
     document.body.classList.remove("map-is-open");
     scrollArea.scrollTo({top:scrollArea.scrollHeight,behavior:"smooth"});
     input.focus();
@@ -1289,11 +1674,25 @@
     send("play " + targetingCard.index + " " + index);
   }
   hand.addEventListener("click", (event) => {
+    const commandButton = event.target.closest && event.target.closest("button[data-command]");
+    if (commandButton && hand.contains(commandButton)) {
+      if (!commandButton.disabled && !submitting) send(commandButton.dataset.command);
+      return;
+    }
     const button = event.target.closest && event.target.closest("button[data-card-index]");
     if (!button || button.disabled) return;
     chooseCard(button.dataset.cardIndex);
   });
   encounter.addEventListener("click", (event) => {
+    const stolenCard = event.target.closest && event.target.closest("button[data-stolen-card-enemy]");
+    if (stolenCard && encounter.contains(stolenCard) && state) {
+      const enemy = (Array.isArray(state.enemies) ? state.enemies : [])
+        .find((item) => String(item.index) === stolenCard.dataset.stolenCardEnemy);
+      const cardIndex = Number(stolenCard.dataset.stolenCardIndex);
+      const card = enemy && Array.isArray(enemy.stolenCards) ? enemy.stolenCards[cardIndex] : null;
+      if (card) openCardPreview(card, {note:"击败偷窃草蜢后，可在战斗奖励中取回这张牌。"});
+      return;
+    }
     const help = event.target.closest && event.target.closest(".intent-help");
     if (help && encounter.contains(help)) {
       event.stopPropagation();
@@ -1314,9 +1713,41 @@
     event.preventDefault();
     chooseEnemyTarget(target.dataset.targetIndex);
   });
+  cardPreviewActions.addEventListener("click", (event) => {
+    const button = event.target.closest && event.target.closest("button");
+    if (!button || button.disabled || !cardPreviewActions.contains(button)) return;
+    if (button.dataset.cardPreviewClose === "true") {
+      cardPreviewDialog.close();
+      return;
+    }
+    if (button.dataset.command) {
+      const command = button.dataset.command;
+      cardPreviewDialog.close();
+      send(command);
+    }
+  });
+  $("#card-preview-close").addEventListener("click", () => cardPreviewDialog.close());
+  cardPreviewDialog.addEventListener("click", (event) => {
+    if (event.target === cardPreviewDialog) cardPreviewDialog.close();
+  });
   $("#intent-dialog-close").addEventListener("click", () => intentDialog.close());
   intentDialog.addEventListener("click", (event) => {
     if (event.target === intentDialog) intentDialog.close();
+  });
+  runAbandonButton.addEventListener("click", () => {
+    if (!state || runAbandonButton.disabled || !state.runAbandon || !state.runAbandon.enabled) return;
+    updateRunControls(state);
+    runAbandonDialog.showModal();
+    updateRunControls(state);
+  });
+  runAbandonCancel.addEventListener("click", () => runAbandonDialog.close());
+  runAbandonDialog.addEventListener("click", (event) => {
+    if (event.target === runAbandonDialog) runAbandonDialog.close();
+  });
+  runAbandonConfirm.addEventListener("click", () => {
+    if (!state || !state.runAbandon || !state.runAbandon.enabled || submitting || state.busy) return;
+    runAbandonDialog.close();
+    send("abandon");
   });
   $("#character-status").addEventListener("click", (event) => {
     const target = event.target.closest && event.target.closest("#character-status[data-target-index]");
@@ -1335,6 +1766,19 @@
     }
   });
   choice.addEventListener("click", (event) => {
+    const previewButton = event.target.closest && event.target.closest("button[data-card-preview-index]");
+    if (previewButton && choice.contains(previewButton) && state) {
+      const rewardIndex = Number(previewButton.dataset.cardPreviewIndex);
+      const option = (Array.isArray(state.options) ? state.options : [])
+        .find((item) => Number(item.index) === rewardIndex && item.cardPreview);
+      if (option) {
+        openCardPreview(option.cardPreview, {
+          command:option.command,
+          claimLabel:option.claimLabel
+        });
+      }
+      return;
+    }
     const button = event.target.closest && event.target.closest("button[data-command]");
     if (!button || button.disabled || submitting) return;
     if (button.dataset.multiSelect === "true" && state && state.selection) {
@@ -1351,12 +1795,71 @@
     }
     send(button.dataset.command);
   });
+  routePreview.addEventListener("click", (event) => {
+    const button = event.target.closest && event.target.closest("button[data-command]");
+    if (!button || button.disabled || submitting) return;
+    send(button.dataset.command);
+  });
   mapNext.addEventListener("click", (event) => {
     const button = event.target.closest && event.target.closest("button[data-command]");
     if (!button || button.disabled) return;
     const command = button.dataset.command;
     mapCloseButton.click();
     send(command);
+  });
+  welcome.addEventListener("click", async (event) => {
+    const characterButton = event.target.closest && event.target.closest("button[data-character]");
+    if (characterButton) {
+      selectedCharacterId = characterButton.dataset.character || "ironclad";
+      if (state) renderWelcome(state);
+      return;
+    }
+    const button = event.target.closest && event.target.closest("button[data-menu-action]");
+    if (!button || button.disabled || !state) return;
+    const action = button.dataset.menuAction;
+    if (action === "singleplayer") {
+      const numberOfRuns = Number(state.mainMenu && state.mainMenu.numberOfRuns || 0);
+      characterParentView = numberOfRuns > 0 ? "modes" : "landing";
+      startMenuView = characterParentView === "modes" ? "modes" : "characters";
+      renderWelcome(state);
+    } else if (action === "standard") {
+      characterParentView = "modes";
+      startMenuView = "characters";
+      renderWelcome(state);
+    } else if (action === "timeline") {
+      startMenuView = "timeline";
+      renderWelcome(state);
+    } else if (action === "reveal-epoch") {
+      const epochId = button.dataset.epochId;
+      if (!epochId) return;
+      await send("reveal " + epochId);
+      startMenuView = state && state.mainMenu && state.mainMenu.timelineForced ? "timeline" : "landing";
+      if (state) renderWelcome(state);
+    } else if (action === "back") {
+      startMenuView = startMenuView === "characters" ? characterParentView : "landing";
+      renderWelcome(state);
+    } else if (action === "continue") {
+      await send("continue");
+    } else if (action === "start") {
+      await startSelectedCharacter();
+    } else if (action === "abandon-run") {
+      startMenuView = "confirm-abandon";
+      renderWelcome(state);
+    } else if (action === "confirm-abandon") {
+      await send("abandon");
+      if (state) {
+        const unlocks = Array.isArray(state.timelineCharacterUnlocks) ? state.timelineCharacterUnlocks : [];
+        const timelinePending = Boolean(state.mainMenu && state.mainMenu.timelineForced && unlocks.length);
+        if (timelinePending) startMenuView = "timeline";
+        else if (!state.hasRunSave && (!state.player || state.phase === "victory" || state.phase === "defeat")) {
+          startMenuView = "landing";
+        }
+        renderWelcome(state);
+      }
+    } else if (action === "cancel-abandon") {
+      startMenuView = "landing";
+      renderWelcome(state);
+    }
   });
   commandHistoryList.addEventListener("click", (event) => {
     const button = event.target.closest && event.target.closest("button.command-history-item");

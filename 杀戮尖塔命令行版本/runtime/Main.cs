@@ -1,11 +1,14 @@
 using Godot;
 using MegaCrit.Sts2.Core.Helpers;
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using MegaCrit.Sts2.Core.Debug;
 using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Characters;
+using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.Localization;
@@ -13,6 +16,9 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Ancients;
+using MegaCrit.Sts2.Core.Events;
+using MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Entities.TreasureRelicPicking;
 using MegaCrit.Sts2.Core.Entities.Potions;
@@ -24,10 +30,13 @@ using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Combat.History.Entries;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Map;
+using MegaCrit.Sts2.Core.Models.Cards;
+using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Unlocks;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Random;
@@ -40,7 +49,9 @@ public partial class Main : Node, ICardSelector
     private RunState? run;
     private Player? player;
     private Task? operation;
+    private CrystalSphereMinigame? crystalSphere;
     private readonly List<string> messages = [];
+    private readonly List<string> autoPlayedCardNames = [];
     private readonly List<Task> background = [];
     private readonly Queue<PendingChoice> pendingChoices = new();
     private readonly Stack<(RewardsSet set, TaskCompletionSource done)> rewardStack = new();
@@ -51,6 +62,7 @@ public partial class Main : Node, ICardSelector
     private bool rewardSelectionPending;
     private int rewardSelectionIndex;
     private bool cardSelectionCancelable;
+    private bool combatHistoryListenerAttached;
     private bool restDone, treasureOpened, treasurePicking, treasureDone, gameWon;
     // The original map vote action only records the vote. The follow-up
     // MoveToMapCoordAction starts RunManager.EnterMapCoord through an
@@ -60,6 +72,10 @@ public partial class Main : Node, ICardSelector
     // cover a freshly entered event or rest site with the route overlay.
     private MapCoord? pendingMapMoveDestination;
     private AbstractRoom? pendingMapMoveSourceRoom;
+    private CombatRoom? autoPlayTrackingRoom;
+    private int? autoPlayTrackingAct;
+    private MapCoord? autoPlayTrackingCoord;
+    private int processedCombatHistoryCount;
     private bool treasureAwardHandlerAttached;
     // Event transformations are recorded by the original CardCmd in the
     // current map-point history. Keep a cursor so the terminal can report the
@@ -68,6 +84,8 @@ public partial class Main : Node, ICardSelector
     private int reportedEventTransformCount;
     private string seed = "";
     private bool failed;
+    private bool runEndRecorded;
+    private bool abandonPending;
     private bool TestHooksEnabled => System.Environment.GetEnvironmentVariable("SPIRECLI_ENABLE_TEST_HOOKS") == "1";
     private static RunManager RM => RunManager.Instance;
     private static CombatManager CM => CombatManager.Instance;
@@ -87,10 +105,19 @@ public partial class Main : Node, ICardSelector
     private bool Playing => CM.IsInProgress && player?.PlayerCombatState?.Phase == PlayerTurnPhase.Play;
     private bool Busy => operation is { IsCompleted: false } || background.Any(t => !t.IsCompleted) || EngineBusy;
     private PendingChoice? CurrentChoice => pendingChoices.Count == 0 ? null : pendingChoices.Peek();
-    private bool Choosing => CurrentChoice != null || Rewards != null || rewardCard != null;
+    private bool Choosing => CurrentChoice != null || Rewards != null || rewardCard != null || crystalSphere != null;
     private bool Dead => player?.Creature.IsDead == true;
     private bool Won => gameWon || (Dead && run?.CurrentRoom?.IsVictoryRoom == true);
     private bool EngineBusy => run != null && (!RM.ActionQueueSet.IsEmpty || RM.ActionExecutor.IsRunning);
+
+    internal void RegisterCrystalSphere(CrystalSphereMinigame minigame)
+    {
+        if (run?.CurrentRoom is not EventRoom)
+            throw new InvalidOperationException("原版水晶球占卜只能在事件房间中启动。");
+        if (crystalSphere != null)
+            throw new InvalidOperationException("已有水晶球占卜正在进行。");
+        crystalSphere = minigame;
+    }
 
     public override async void _Ready()
     {
@@ -112,10 +139,13 @@ public partial class Main : Node, ICardSelector
             ModelDb.Init(); ModelIdSerializationCache.Init(); ModelDb.InitIds(); ActionTypes.Initialize();
             SaveManager.Instance.InitProfileId(1);
             SaveManager.Instance.InitPrefsDataForTest(); SaveManager.Instance.InitProgressData();
+            EnsureTerminalTimelineProgress();
             MegaCrit.Sts2.Core.Logging.Logger.GlobalLogLevel = LogLevel.Warn;
             CardSelectCmd.PushSelector(this);
             ChoiceAdapters.Attach(this);
             RewardsSet.testSelector = OfferRewards;
+            CM.History.Changed += CaptureAutoPlayedCards;
+            combatHistoryListenerAttached = true;
             CM.CombatWon += room => { if (room.Encounter.ShouldGiveRewards) Track(room.OfferRoomEndRewards()); };
             Publish();
             while (true)
@@ -138,7 +168,7 @@ public partial class Main : Node, ICardSelector
                     System.Console.Error.WriteLine(ex);
                     Say(readOnly
                         ? "只读查询失败，旅程状态未推进；可以继续输入其他命令。\n" + ex.GetBaseException().Message
-                        : "原版接口适配发生错误，已停止推进以避免损坏状态。可输入 new ironclad 重开。\n" + ex.GetBaseException().Message);
+                        : "原版接口适配发生错误，已停止推进以避免损坏状态。可从角色菜单重新开始。\n" + ex.GetBaseException().Message);
                 }
                 Publish();
             }
@@ -147,7 +177,11 @@ public partial class Main : Node, ICardSelector
         GetTree().Quit();
     }
 
-    public override void _ExitTree() => ChoiceAdapters.Detach(this);
+    public override void _ExitTree()
+    {
+        if(combatHistoryListenerAttached) CM.History.Changed -= CaptureAutoPlayedCards;
+        ChoiceAdapters.Detach(this);
+    }
 
     private void MountReferencePack()
     {
@@ -164,6 +198,8 @@ public partial class Main : Node, ICardSelector
     private void Start(Task task) { operation = task; }
     private async Task Settle()
     {
+        int abandonWaitFrames=0;
+        bool abandonKillFallbackStarted=false;
         for (int i = 0; i < 600; i++)
         {
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -180,9 +216,55 @@ public partial class Main : Node, ICardSelector
             // task without awaiting it. Do not publish a room snapshot while that
             // task still owns an empty, unfinished EventModel; the web client would
             // otherwise see no choices and could reopen the map over the event.
+            if (run?.CurrentRoom is EventRoom architectRoom && EventInitializationPending(architectRoom))
+                EnsureHeadlessArchitectDialogue(architectRoom);
             if (EventInitializationPending()) continue;
+            if(abandonPending)
+            {
+                if(Dead&&!Busy)
+                {
+                    await RecordHeadlessDefeatIfNeeded();
+                    if(runEndRecorded)
+                    {
+                        abandonPending=false;
+                        ReportEventCardChanges();
+                        return;
+                    }
+                }
+                // RunManager.Abandon() schedules its original UI flow as a
+                // background task. In a headless host its menu-node cleanup
+                // can fail before GuaranteeKillAllPlayers finishes. After
+                // giving that original path time to complete, use the same
+                // native CreatureCmd.Kill path as its guarantee-kill helper.
+                // This prevents an abandoned current_run.save from surviving
+                // and reappearing as a resumable run on the next host.
+                abandonWaitFrames++;
+                if(!Dead&&!Busy&&!abandonKillFallbackStarted&&abandonWaitFrames>=120)
+                {
+                    if(!RM.IsAbandoned)
+                        throw new CommandError("原版放弃流程未完成标记，当前旅程仍保留；请稍后重试。");
+                    abandonKillFallbackStarted=true;
+                    if(player==null) throw new CommandError("原版放弃流程已开始，但玩家状态不可用；当前存档已保留。");
+                    System.Console.Error.WriteLine("原版放弃流程在无界面主机中未能击杀玩家，改用原版 CreatureCmd.Kill 完成败局结算。");
+                    Start(CreatureCmd.Kill(player.Creature,force:true));
+                }
+                continue;
+            }
+            if (crystalSphere is { } minigame)
+            {
+                if (minigame.DivinationCount > 0) return;
+                if (Rewards != null) return;
+                if (run?.CurrentRoom is EventRoom sphereRoom && sphereRoom.LocalMutableEvent.IsFinished)
+                {
+                    crystalSphere = null;
+                    ReportEventCardChanges();
+                    return;
+                }
+                continue;
+            }
             if (Choosing || (!Busy && !EngineBusy && (!CM.IsInProgress || Playing || Dead)))
             {
+                await RecordHeadlessDefeatIfNeeded();
                 ReportEventCardChanges();
                 return;
             }
@@ -190,10 +272,37 @@ public partial class Main : Node, ICardSelector
         throw new CommandError("仍在结算。输入 status 获取状态；不要重复上一条操作。");
     }
 
-    private static bool EventInitializationPending(EventRoom eventRoom)
+    private bool EventInitializationPending(EventRoom eventRoom)
     {
         EventModel eventModel=eventRoom.LocalMutableEvent;
-        return !eventModel.IsFinished && eventModel.CurrentOptions.Count==0;
+        return crystalSphere==null && !eventModel.IsFinished && eventModel.CurrentOptions.Count==0;
+    }
+
+    private static void EnsureHeadlessArchitectDialogue(EventRoom eventRoom)
+    {
+        EventModel eventModel=eventRoom.LocalMutableEvent;
+        if(TestMode.IsOff || eventModel is not TheArchitect architect || eventModel.IsFinished || eventModel.CurrentOptions.Count!=0)
+            return;
+
+        // The original TheArchitect.OnRoomEnter clears its first option while its
+        // combat-scene speech bubble starts. In TestMode there is no NCombatRoom,
+        // so an Architect line has no speaker Creature and PlayCurrentLine returns
+        // before restoring that option. Recreate the same native option through
+        // TheArchitect.CreateOptionForCurrentLine and EventModel.SetEventState;
+        // its original AdvanceDialogue/WinRun callbacks remain authoritative.
+        var dialogue=typeof(TheArchitect).GetField("_dialogue",BindingFlags.Instance|BindingFlags.NonPublic)?.GetValue(architect) as AncientDialogue;
+        var lineIndex=typeof(TheArchitect).GetField("_currentLineIndex",BindingFlags.Instance|BindingFlags.NonPublic)?.GetValue(architect) as int?;
+        if(dialogue==null || dialogue.Lines.Count==0 || lineIndex!=0)
+            return;
+
+        var createOption=typeof(TheArchitect).GetMethod("CreateOptionForCurrentLine",BindingFlags.Instance|BindingFlags.NonPublic);
+        var option=createOption?.Invoke(architect,null) as EventOption;
+        var setEventState=typeof(EventModel).GetMethod("SetEventState",BindingFlags.Instance|BindingFlags.NonPublic);
+        if(option==null || setEventState==null)
+            throw new InvalidOperationException("原版终局对白的首个事件选项无法初始化。");
+
+        LocString description=eventModel.Description??new LocString("ancients","PROCEED.description");
+        setEventState.Invoke(eventModel,[description,new[]{option}]);
     }
 
     private bool EventInitializationPending()
@@ -227,7 +336,7 @@ public partial class Main : Node, ICardSelector
         if (cmd is "help" or "帮助")
         {
             Say(TestHooksEnabled
-                ? Help + "\n测试模式（SPIRECLI_ENABLE_TEST_HOOKS=1）：__test_kill [敌人编号|all]（无参数时击杀全部存活敌人）"
+                ? Help + "\n测试模式（SPIRECLI_ENABLE_TEST_HOOKS=1）：__test_kill [敌人编号|all]；__test_complete_run（结束旅程以验证原版进度）"
                 : Help);
             return;
         }
@@ -235,31 +344,79 @@ public partial class Main : Node, ICardSelector
         if (cmd == "clear") return;
         if (cmd == "new")
         {
-            if (a.Length < 2 || a[1].ToLowerInvariant() != "ironclad") throw new CommandError("用法：new ironclad [种子] [进阶0–10]");
+            if (a.Length < 2) throw new CommandError("用法：new ironclad|silent [种子] [进阶0–10]");
+            CharacterModel character = CharacterFromKey(a[1]);
+            var unlocks = SaveManager.Instance.GenerateUnlockStateFromProgress();
+            if (!unlocks.Characters.Any(unlocked => unlocked.Id == character.Id))
+                throw new CommandError($"{Text(character.Title)}尚未解锁。{Text(character.GetUnlockText())} {SilentUnlockRequirement()}");
             int asc=0;
             if(a.Length>3&&!int.TryParse(a[3],out asc)) throw new CommandError("进阶必须是 0–10 之间的整数。");
-            if (a.Length > 4 || asc < 0 || asc > 10) throw new CommandError("用法：new ironclad [种子] [进阶0–10]");
+            if (a.Length > 4 || asc < 0 || asc > 10) throw new CommandError("用法：new ironclad|silent [种子] [进阶0–10]");
             if (run != null && !failed && !Dead && !gameWon) throw new CommandError("已有进行中的旅程。输入 abandon 放弃后再开始。");
-            if (run == null && SaveManager.Instance.HasRunSave) throw new CommandError("检测到可继续的存档。输入 continue 恢复，或 abandon 删除存档后重新开始。");
+            if (run == null && HasPendingRunSave()) throw new CommandError("检测到可继续的存档。输入 continue 恢复，或输入 abandon 放弃本局（计为失败）后开始新旅程。");
             if (run != null) SaveManager.Instance.DeleteCurrentRun();
-            Start(NewRun(a.Length > 2 ? a[2] : SeedHelper.GetRandomSeed(), asc)); return;
+            Start(NewRun(character, a.Length > 2 ? a[2] : SeedHelper.GetRandomSeed(), asc)); return;
+        }
+        if (cmd == "unlock")
+        {
+            if (a.Length != 2 || !a[1].Equals("silent", StringComparison.OrdinalIgnoreCase))
+                throw new CommandError("用法：unlock silent");
+            RevealCharacterEpoch(EpochModel.GetId<Silent1Epoch>());
+            return;
+        }
+        if (cmd == "reveal")
+        {
+            if (a.Length != 2) throw new CommandError("用法：reveal 历史节点编号");
+            RevealCharacterEpoch(a[1].ToUpperInvariant());
+            return;
         }
         if(cmd=="continue")
         {
             if(a.Length!=1) throw new CommandError("用法：continue");
             if(run!=null) throw new CommandError("当前已有旅程，不能继续另一份存档。");
-            if(!SaveManager.Instance.HasRunSave) throw new CommandError("没有可继续的存档。输入 new ironclad 开始。");
+            if(!HasPendingRunSave()) throw new CommandError("没有可继续的存档。请从角色菜单开始新旅程。");
             Start(ContinueSavedRun()); return;
         }
         if(cmd=="abandon")
         {
-            if(run!=null) ResetRunState();
-            SaveManager.Instance.DeleteCurrentRun();
-            Say("已放弃本次旅程并删除存档。输入 new ironclad 开始，或 continue 恢复现有存档。");
+            if(run!=null&&RM.IsInProgress&&!run.IsGameOver&&!Dead&&!gameWon)
+            {
+                // Use the original in-game path. RunManager.Abandon marks the
+                // run abandoned and kills the player; TestMode suppresses the
+                // original Game Over callback, so Settle() records that same
+                // native run-end below through RecordHeadlessDefeatIfNeeded().
+                abandonPending=true;
+                RM.Abandon();
+                Say("已放弃本次旅程。");
+                return;
+            }
+            SerializableRun? abandonedRun=null;
+            if(run!=null)
+            {
+                abandonedRun=RM.ToSave(null);
+                ResetRunState();
+            }
+            else if(SaveManager.Instance.HasRunSave)
+            {
+                var saved=SaveManager.Instance.LoadRunSave();
+                if(saved.Success) abandonedRun=saved.SaveData;
+            }
+            if(abandonedRun!=null)
+            {
+                string historyName=$"{abandonedRun.StartTime}.run";
+                bool alreadyRecorded=SaveManager.Instance.GetAllRunHistoryNames().Contains(historyName,StringComparer.Ordinal);
+                if(!alreadyRecorded)
+                {
+                    SaveManager.Instance.UpdateProgressWithRunData(abandonedRun,victory:false);
+                    RunHistoryUtilities.CreateRunHistoryEntry(abandonedRun,false,true,abandonedRun.PlatformType);
+                }
+            }
+            await DeleteCurrentRunSaveFiles();
+            Say("已放弃本次旅程。");
             return;
         }
         if (cmd == "cards") { Catalog(a.Length > 1 ? string.Join(' ', a.Skip(1)) : ""); return; }
-        if (run == null || player == null) throw new CommandError("尚未开始。输入 new ironclad。");
+        if (run == null || player == null) throw new CommandError("尚未开始。请从角色菜单开始新旅程。");
         if (cmd is "hand" or "deck" or "discard" or "exhaust" or "draw")
         {
             var pile = cmd switch { "deck" => player.Deck, "hand" => player.PlayerCombatState?.Hand, "draw" => player.PlayerCombatState?.DrawPile, "discard" => player.PlayerCombatState?.DiscardPile, _ => player.PlayerCombatState?.ExhaustPile };
@@ -288,6 +445,12 @@ public partial class Main : Node, ICardSelector
                 else targets=[aliveEnemies[Index(a,1,aliveEnemies.Count)]];
                 Start(TestKillEnemies(targets)); return;
             }
+            if(cmd=="__test_complete_run")
+            {
+                if(a.Length!=1) throw new CommandError("测试入口用法错误。");
+                if(Busy||Choosing||run==null||player==null||Dead||Won) throw new CommandError("测试结束只能在进行中的旅程里使用。");
+                Start(CreatureCmd.Kill(player.Creature,force:true)); return;
+            }
             if(cmd=="__test_select")
             {
                 if(a.Length!=2) throw new CommandError("测试入口用法错误。");
@@ -309,7 +472,7 @@ public partial class Main : Node, ICardSelector
             }
             throw new CommandError("未知命令。输入 help 查看命令。");
         }
-        if (failed || Dead || gameWon) throw new CommandError("旅程已结束。输入 new ironclad 开始下一次。");
+        if (failed || Dead || gameWon) throw new CommandError("旅程已结束。请从角色菜单开始下一次。");
         if (CurrentChoice is { } currentChoice)
         {
             ResolveQueuedChoice(currentChoice, cmd, a);
@@ -357,6 +520,34 @@ public partial class Main : Node, ICardSelector
             var list=Rewards.Rewards.Where(r=>!r.SuccessfullySelected).ToList(); var reward=list[Index(a,1,list.Count)];
             if(reward is CardReward cr) {rewardCard=cr; ShowRewardCardChoices(cr);}
             else Start(TakeReward(reward));
+            return;
+        }
+        if (crystalSphere is { } divination)
+        {
+            if (cmd is not ("scry" or "divine"))
+                throw new CommandError(DivinationPrompt(divination));
+            if (divination.DivinationCount <= 0)
+                throw new CommandError("占卜次数已用完，正在按原版结算揭示物品。");
+            string tool = a.Length > 1 ? a[1].ToLowerInvariant() : "";
+            if (a.Length == 2 && (tool is "small" or "big"))
+            {
+                divination.SetTool(tool == "small"
+                    ? CrystalSphereMinigame.CrystalSphereToolType.Small
+                    : CrystalSphereMinigame.CrystalSphereToolType.Big);
+                Say(tool == "small" ? "已选择小幅占卜。" : "已选择大幅占卜。");
+                return;
+            }
+            if (a.Length != 3)
+                throw new CommandError("用法：scry small|big 选择占卜范围；scry 列 行 揭开格子。");
+            int x = Index(a, 1, divination.GridSize.X);
+            int y = Index(a, 2, divination.GridSize.Y);
+            CrystalSphereCell cell = divination.cells[x, y];
+            if (!cell.IsHidden)
+                throw new CommandError("这个格子已经揭开，请选择仍被遮住的格子。");
+            await divination.CellClicked(cell);
+            Say(divination.DivinationCount > 0
+                ? $"揭开第 {x + 1} 列、第 {y + 1} 行。{DivinationPrompt(divination)}"
+                : "占卜次数已用完，正在按原版结算揭示物品。");
             return;
         }
         if (Busy) throw new CommandError("正在结算，请输入 status 查看。");
@@ -460,7 +651,7 @@ public partial class Main : Node, ICardSelector
         }
     }
 
-    private async Task NewRun(string chosenSeed,int asc)
+    private async Task NewRun(CharacterModel character,string chosenSeed,int asc)
     {
         ResetRunState();
         seed=chosenSeed;
@@ -471,11 +662,11 @@ public partial class Main : Node, ICardSelector
             SaveManager.Instance.SaveProgressFile();
         }
         var unlocks=SaveManager.Instance.GenerateUnlockStateFromProgress();
-        int maxAscension=SaveManager.Instance.Progress.GetOrCreateCharacterStats(ModelDb.Character<Ironclad>().Id).MaxAscension;
+        int maxAscension=SaveManager.Instance.Progress.GetOrCreateCharacterStats(character.Id).MaxAscension;
         int acceptedAscension=Math.Min(asc,maxAscension);
         if(acceptedAscension!=asc) Say($"原版角色选择会将进阶限制为已解锁的 {acceptedAscension}。" );
         asc=acceptedAscension;
-        player=Player.CreateForNewRun<Ironclad>(unlocks,1);
+        player=Player.CreateForNewRun(character,unlocks,1);
         // Same seed stream as StartRunLobby; other profile unlock restrictions remain in effect.
         var acts=ActModel.GetRandomList(new Rng((uint)StringHelper.GetDeterministicHashCode(seed), "act_selection"),unlocks,false).Select(a=>a.ToMutable()).ToArray();
         run=RunState.CreateForNewRun([player],acts,[],GameMode.Standard,asc,seed);
@@ -484,7 +675,169 @@ public partial class Main : Node, ICardSelector
         AttachTreasureAwardHandler();
         await RM.FinalizeStartingRelics();RM.Launch();
         await RM.EnterAct(0,doTransition:false);
-        Say($"战士 · 种子 {seed} · 进阶 {asc}\n{Text(run.Act.Title)}，旅程开始。");
+        Say($"{Text(character.Title)} · 种子 {seed} · 进阶 {asc}\n{Text(run.Act.Title)}，旅程开始。");
+    }
+
+    private void EnsureTerminalTimelineProgress()
+    {
+        bool changed=false;
+        var progress=SaveManager.Instance.Progress;
+        string neowId=EpochModel.GetId<NeowEpoch>();
+        if(!progress.IsEpochRevealed(neowId))
+        {
+            SaveManager.Instance.ObtainEpochOverride(neowId,EpochState.Revealed);
+            changed=true;
+        }
+
+        // The terminal skips NTimelineScreen. Preserve the original Neow
+        // QueueUnlocks save-state effects so the Silent epoch exists in the
+        // same progress graph; timeline animation and text are UI-only.
+        string silentId=EpochModel.GetId<Silent1Epoch>();
+        var silentEpoch=progress.Epochs.FirstOrDefault(item=>item.Id==silentId);
+        if(silentEpoch==null||silentEpoch.State is EpochState.None or EpochState.NoSlot or EpochState.NotObtained)
+        {
+            SaveManager.Instance.ObtainEpochOverride(silentId,EpochState.ObtainedNoSlot);
+            changed=true;
+        }
+        foreach(EpochModel epoch in EpochModel.Get<NeowEpoch>().GetTimelineExpansion())
+        {
+            var existing=progress.Epochs.FirstOrDefault(item=>item.Id==epoch.Id);
+            if(existing==null || existing.State==EpochState.ObtainedNoSlot)
+            {
+                SaveManager.Instance.UnlockSlot(epoch.Id);
+                changed=true;
+            }
+        }
+        if(changed) SaveManager.Instance.SaveProgressFile();
+    }
+
+    private async Task RecordHeadlessDefeatIfNeeded()
+    {
+        if(!TestMode.IsOn || !Dead || Won || runEndRecorded || run==null) return;
+        // Original CreatureCmd skips RunManager.OnEnded(false) in TestMode.
+        // Call that same native run-end routine at the point where the original
+        // game would show Game Over, so completed-run stats and unlock progress
+        // are still written by ProgressSaveManager.
+        RM.OnEnded(isVictory:false);
+        runEndRecorded=true;
+        abandonPending=false;
+        await DeleteCurrentRunSaveFiles();
+    }
+
+    private async Task DeleteCurrentRunSaveFiles()
+    {
+        SaveManager saveManager=SaveManager.Instance;
+        saveManager.DeleteCurrentRun();
+        string savePath=saveManager.GetProfileScopedPath(Path.Combine("saves","current_run.save"));
+        for(int attempt=0;attempt<5;attempt++)
+        {
+            // GodotFileIo.DeleteFile can fail on the .backup file in headless
+            // user:// saves. Use the globally resolved native file path as a
+            // final cleanup so HasRunSave cannot mistake that stale backup for
+            // an unfinished run after RunManager.OnEnded has completed.
+            foreach(string path in new[]{savePath,savePath+".backup"})
+            {
+                try
+                {
+                    string globalPath=ProjectSettings.GlobalizePath(path);
+                    if(System.IO.File.Exists(globalPath)) System.IO.File.Delete(globalPath);
+                }
+                catch(Exception ex)
+                {
+                    System.Console.Error.WriteLine($"清理已结束旅程存档失败，将按原版历史记录判断是否为过期存档：{ex.Message}");
+                }
+            }
+            if(!HasPendingRunSave()) return;
+            await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
+        }
+        throw new IOException("原版已结束旅程，但 current_run.save 或备份仍存在。");
+    }
+
+    private bool HasPendingRunSave()
+    {
+        SaveManager saveManager=SaveManager.Instance;
+        if(!saveManager.HasRunSave) return false;
+        // Once this host has run the native end-of-run handler, any remaining
+        // save is only a stale file. The original SaveManager also treats a
+        // save as stale when its StartTime already has a run-history entry.
+        if(runEndRecorded) return false;
+        string savePath=saveManager.GetProfileScopedPath(Path.Combine("saves","current_run.save"));
+        string candidate=Godot.FileAccess.FileExists(savePath)?savePath:savePath+".backup";
+        try
+        {
+            using Godot.FileAccess? file=Godot.FileAccess.Open(candidate,Godot.FileAccess.ModeFlags.Read);
+            if(file==null) return true;
+            using JsonDocument document=JsonDocument.Parse(file.GetAsText());
+            if(!document.RootElement.TryGetProperty("start_time",out JsonElement startTimeElement)
+                || !startTimeElement.TryGetInt64(out long startTime)) return true;
+            string historyName=$"{startTime}.run";
+            if(!saveManager.GetAllRunHistoryNames().Contains(historyName,StringComparer.Ordinal)) return true;
+            var historyResult=saveManager.LoadRunHistory(historyName);
+            if(!historyResult.Success || historyResult.SaveData==null) return true;
+            if(!document.RootElement.TryGetProperty("rng",out JsonElement rngElement)
+                || !rngElement.TryGetProperty("seed",out JsonElement seedElement)) return true;
+            string? seed=seedElement.GetString();
+            return !String.Equals(historyResult.SaveData.Seed,seed,StringComparison.Ordinal);
+        }
+        catch(Exception)
+        {
+            return true;
+        }
+    }
+
+    private static CharacterModel CharacterFromKey(string key)
+        => key.ToLowerInvariant() switch
+        {
+            "ironclad" or "warrior" or "战士" or "铁甲战士" => ModelDb.Character<Ironclad>(),
+            "silent" or "hunter" or "静默猎手" or "猎手" => ModelDb.Character<Silent>(),
+            _ => throw new CommandError("角色应为 ironclad（铁甲战士）或 silent（静默猎手）。")
+        };
+
+    private static string CharacterKey(CharacterModel character)
+        => character is Silent ? "silent" : "ironclad";
+
+    private static string CharacterName(CharacterModel? character)
+        => character==null?"铁甲战士":Text(character.Title);
+
+    private static string SilentUnlockRequirement()
+    {
+        var unlockInfo=EpochModel.Get<Silent1Epoch>().UnlockInfo;
+        unlockInfo.Add("IsRevealed",variable:false);
+        return Text(unlockInfo);
+    }
+
+    private bool CanRevealSilent()
+    {
+        var stats=SaveManager.Instance.Progress.GetStatsForCharacter(ModelDb.Character<Ironclad>().Id);
+        string silentId=EpochModel.GetId<Silent1Epoch>();
+        return stats!=null
+            && stats.TotalWins+stats.TotalLosses>0
+            && SaveManager.Instance.GetRevealableEpochs().Any(epoch=>epoch.Id==silentId);
+    }
+
+    private void RevealCharacterEpoch(string epochId)
+    {
+        string silentId=EpochModel.GetId<Silent1Epoch>();
+        if(epochId!=silentId)
+            throw new CommandError("当前网页时间线只接入了静默猎手的原版解锁节点。");
+        if(SaveManager.Instance.IsEpochRevealed(silentId))
+        {
+            Say("静默猎手已解锁，可以从角色菜单开始旅程。");
+            return;
+        }
+        if(!CanRevealSilent()) throw new CommandError("尚未满足原版解锁条件，或该历史节点当前不可揭示。"+SilentUnlockRequirement());
+        if(!SaveManager.Instance.Progress.HasEpoch(silentId))
+            throw new InvalidOperationException("Neow timeline expansion did not create the original Silent unlock epoch.");
+        SaveManager.Instance.RevealEpoch(silentId);
+        SaveManager.Instance.Progress.PendingCharacterUnlock=ModelDb.Character<Silent>().Id;
+        foreach(EpochModel epoch in EpochModel.Get<Silent1Epoch>().GetTimelineExpansion())
+        {
+            var existing=SaveManager.Instance.Progress.Epochs.FirstOrDefault(item=>item.Id==epoch.Id);
+            if(existing==null || existing.State==EpochState.ObtainedNoSlot)
+                SaveManager.Instance.UnlockSlot(epoch.Id);
+        }
+        SaveManager.Instance.SaveProgressFile();
+        Say("静默猎手已解锁，可以从角色菜单开始旅程。");
     }
 
     private async Task TestEnterAct(int actIndex)
@@ -560,6 +913,7 @@ public partial class Main : Node, ICardSelector
         rewardSelectionPending=false;
         rewardSelectionIndex=0;
         cardSelectionCancelable=false;
+        crystalSphere=null;
         while(rewardStack.TryPop(out var pendingReward)) pendingReward.done.TrySetCanceled();
         if(operation!=null) ObserveFault(operation);
         foreach(var task in background) ObserveFault(task);
@@ -575,12 +929,19 @@ public partial class Main : Node, ICardSelector
         background.Clear();
         failed=false;
         gameWon=false;
+        runEndRecorded=false;
+        abandonPending=false;
         restDone=false;
         treasureOpened=false;
         treasurePicking=false;
         treasureDone=false;
         pendingMapMoveDestination=null;
         pendingMapMoveSourceRoom=null;
+        autoPlayedCardNames.Clear();
+        autoPlayTrackingRoom=null;
+        autoPlayTrackingAct=null;
+        autoPlayTrackingCoord=null;
+        processedCombatHistoryCount=0;
         observedEventHistoryEntry=null;
         reportedEventTransformCount=0;
         seed="";
@@ -599,6 +960,10 @@ public partial class Main : Node, ICardSelector
     }
     private Task OfferRewards(RewardsSet set)
     {
+        // Empty final-act boss rewards are already completed by the original
+        // RewardsSetSynchronizer. Do not leave a synthetic web reward screen
+        // on its stack just to expose a skip button that has nothing to skip.
+        if(set.Rewards.Count==0)return Task.CompletedTask;
         var done=new TaskCompletionSource();rewardStack.Push((set,done));return done.Task;
     }
     private async Task TakeReward(Reward reward)
@@ -956,6 +1321,12 @@ public partial class Main : Node, ICardSelector
         type=power.Type.ToString(),
         description=PowerDescription(power)
     }).ToArray();
+    private object[] StolenCardViews(Creature creature) => creature.Powers
+        .OfType<SwipePower>()
+        .Select(power=>power.StolenCard)
+        .Where(card=>card!=null)
+        .Select(card=>CardPreviewView(card!))
+        .ToArray();
     private sealed record EnemyIntentView(string type,string label,string title,string description,bool hasIntentTip);
     private EnemyIntentView[] EnemyIntentViews(Creature enemy)
     {
@@ -1006,12 +1377,87 @@ public partial class Main : Node, ICardSelector
         }
         return Text(description);
     }
-    private static object EventState(EventRoom eventRoom)
+    private static object? ArchitectDialogueView(EventModel eventModel)
+    {
+        if(eventModel is not TheArchitect architect)return null;
+        var dialogue=typeof(TheArchitect).GetField("_dialogue",BindingFlags.Instance|BindingFlags.NonPublic)?.GetValue(architect) as AncientDialogue;
+        var lineIndex=typeof(TheArchitect).GetField("_currentLineIndex",BindingFlags.Instance|BindingFlags.NonPublic)?.GetValue(architect) as int?;
+        if(dialogue==null || lineIndex is not int index || index<0 || index>=dialogue.Lines.Count)return null;
+        AncientDialogueLine line=dialogue.Lines[index];
+        string speaker=line.Speaker switch
+        {
+            AncientDialogueSpeaker.Ancient=>Text(new LocString("ancients","THE_ARCHITECT.title")),
+            AncientDialogueSpeaker.Character when eventModel.Owner is { } owner=>Text(owner.Character.Title),
+            _=>""
+        };
+        return new {speaker,text=Text(line.LineText)};
+    }
+    private object EventState(EventRoom eventRoom)
     {
         EventModel eventModel=eventRoom.LocalMutableEvent;
-        int optionCount=eventModel.CurrentOptions.Count;
-        return new {initialized=eventModel.IsFinished||optionCount>0,finished=eventModel.IsFinished,optionCount};
+        int optionCount=crystalSphere==null?eventModel.CurrentOptions.Count:0;
+        return new {initialized=eventModel.IsFinished||optionCount>0||crystalSphere!=null,finished=eventModel.IsFinished,optionCount};
     }
+    private static bool CrystalSphereItemRevealed(CrystalSphereMinigame minigame,CrystalSphereItem item)
+    {
+        for(int x=item.Position.X;x<item.Position.X+item.Size.X;x++)
+            for(int y=item.Position.Y;y<item.Position.Y+item.Size.Y;y++)
+                if(minigame.cells[x,y].IsHidden)return false;
+        return true;
+    }
+    private static string CrystalSphereItemLabel(CrystalSphereItem item)
+    {
+        var serialized=item.ToSerializable();
+        return serialized.type switch
+        {
+            CrystalSphereItemType.Relic=>"遗物",
+            CrystalSphereItemType.Curse=>ModelDb.Card<Doubt>().Title,
+            CrystalSphereItemType.Gold=>serialized.isBigGold?"30 金币":"10 金币",
+            CrystalSphereItemType.Potion=>Text(serialized.potionRarity.ToLocString())+"药水",
+            CrystalSphereItemType.CardReward=>Text(serialized.cardRarity.ToLocString())+"卡牌奖励",
+            _=>"物品"
+        };
+    }
+    private object? CrystalSphereView()
+    {
+        if(crystalSphere is not { } minigame || (minigame.DivinationCount == 0 && Rewards != null))return null;
+        var revealedItems=minigame.Items.Where(item=>CrystalSphereItemRevealed(minigame,item)).Select(item=>new
+        {
+            x=item.Position.X+1,
+            y=item.Position.Y+1,
+            width=item.Size.X,
+            height=item.Size.Y,
+            label=CrystalSphereItemLabel(item),
+            good=item.IsGood
+        }).ToArray();
+        var cells=new List<object>(minigame.GridSize.X*minigame.GridSize.Y);
+        for(int y=0;y<minigame.GridSize.Y;y++)
+            for(int x=0;x<minigame.GridSize.X;x++)
+            {
+                int itemIndex=Array.FindIndex(revealedItems,item=>x+1>=item.x&&x+1<item.x+item.width&&y+1>=item.y&&y+1<item.y+item.height);
+                bool itemAnchor=itemIndex>=0&&revealedItems[itemIndex].x==x+1&&revealedItems[itemIndex].y==y+1;
+                cells.Add(new {x=x+1,y=y+1,hidden=minigame.cells[x,y].IsHidden,itemIndex=itemIndex>=0?(int?)(itemIndex+1):null,itemAnchor});
+            }
+        var remaining=new LocString("events","CRYSTAL_SPHERE.minigame.divinationsRemain");
+        remaining.Add("Count",minigame.DivinationCount);
+        return new
+        {
+            width=minigame.GridSize.X,
+            height=minigame.GridSize.Y,
+            remaining=minigame.DivinationCount,
+            remainingLabel=Text(remaining),
+            tool=minigame.CrystalSphereTool.ToString(),
+            finished=minigame.IsFinished,
+            instructionsTitle=Text(new LocString("events","CRYSTAL_SPHERE.minigame.instructions.title")),
+            instructions=Text(new LocString("events","CRYSTAL_SPHERE.minigame.instructions.description")),
+            smallLabel=Text(new LocString("events","CRYSTAL_SPHERE.button.DIVINATION_LABEL_SMALL")),
+            bigLabel=Text(new LocString("events","CRYSTAL_SPHERE.button.DIVINATION_LABEL_BIG")),
+            cells,
+            revealedItems
+        };
+    }
+    private static string DivinationPrompt(CrystalSphereMinigame minigame)
+        =>$"水晶球占卜：还剩 {minigame.DivinationCount} 次 · scry small|big 选择占卜范围 · scry 列 行 揭开格子";
     private object RestState(RestSiteRoom restSite)
     {
         var options=restSite.Options;
@@ -1031,8 +1477,9 @@ public partial class Main : Node, ICardSelector
     private void ShowCards(IReadOnlyList<CardModel> cards) {if(cards.Count==0)Say("空");for(int i=0;i<cards.Count;i++)Say($"{i+1}. {CardText(cards[i])}");}
     private void Catalog(string query)
     {
-        var cards=ModelDb.Character<Ironclad>().CardPool.AllCards.Concat(ModelDb.Character<Ironclad>().StartingDeck).DistinctBy(c=>c.Id).Where(c=>c.Id.Entry.Contains(query,StringComparison.OrdinalIgnoreCase)||c.Title.Contains(query)).ToList();
-        Say($"战士卡牌 · {cards.Count} 张");
+        CharacterModel character=player?.Character??ModelDb.Character<Ironclad>();
+        var cards=character.CardPool.AllCards.Concat(character.StartingDeck).DistinctBy(c=>c.Id).Where(c=>c.Id.Entry.Contains(query,StringComparison.OrdinalIgnoreCase)||c.Title.Contains(query)).ToList();
+        Say($"{CharacterName(character)}卡牌 · {cards.Count} 张");
         foreach(var c in cards) Say($"{c.Id.Entry} · {CardText(c)}");
     }
     private void Inspect(string[] a)
@@ -1077,14 +1524,14 @@ public partial class Main : Node, ICardSelector
     private void Describe()
     {
         if(run==null){Say(Prompt());return;}
-        Say($"战士 HP {player!.Creature.CurrentHp}/{player.Creature.MaxHp} · 格挡 {player.Creature.Block} · 金币 {player.Gold}");
+        Say($"{CharacterName(player!.Character)} HP {player.Creature.CurrentHp}/{player.Creature.MaxHp} · 格挡 {player.Creature.Block} · 金币 {player.Gold}");
         Say(Prompt());
     }
     private string Prompt()
     {
         if(failed)return "适配错误，请重开旅程";
-        if(Won)return "胜利 · new ironclad 开始下一次旅程";
-        if(Dead)return "你倒下了。new ironclad 开始下一次旅程";
+        if(Won)return "胜利 · 从角色菜单开始下一次旅程";
+        if(Dead)return "你倒下了。可以从角色菜单开始下一次旅程";
         if(CurrentChoice is { } choice)return ChoicePrompt(choice);
         if(rewardCard is { } cardReward)
         {
@@ -1093,6 +1540,7 @@ public partial class Main : Node, ICardSelector
             return rewardStageChoice==null?"选择卡牌奖励：choose 编号（包含原版替代选项）"+skipText+" / back 返回奖励列表":"原版奖励效果正在等待后续选择：choose 编号"+skipText;
         }
         if(Rewards is { } rewardSet)return rewardSet.DisallowSkipping?"战利品：take 编号领取（本组不可跳过）":"战利品：take 编号 / skip 跳过剩余奖励";
+        if(crystalSphere is { } minigame)return minigame.DivinationCount>0?DivinationPrompt(minigame):"水晶球占卜已结束，正在结算原版奖励";
         if(Playing)return "play 手牌编号 敌人编号 · end 结束回合";
         if(run?.CurrentRoom is EventRoom e)
         {
@@ -1116,7 +1564,7 @@ public partial class Main : Node, ICardSelector
         if(run?.CurrentRoom is TreasureRoom)
             return !treasureOpened?"open 开箱并领取原版金币和附加奖励":!treasureDone?"choose 编号领取遗物 · skip 跳过遗物":"move 编号前进 · proceed 查看路线";
         if(run?.CurrentRoom is MerchantRoom)return "buy 编号购买商品 · proceed 离开商店 · move 编号也可直接前进 · shop 查看清单";
-        return run==null?(SaveManager.Instance.HasRunSave?"continue 恢复存档 · abandon 删除存档":"new ironclad 开始旅程"):"map 查看路线 · move 编号前进";
+        return run==null?(HasPendingRunSave()?"点击继续旅程或输入 continue 恢复存档；从角色菜单开始新旅程":"从角色菜单选择角色并开始旅程；也可输入 new ironclad 或 new silent"):"map 查看路线 · move 编号前进";
     }
     private static object[] CardHoverTips(CardModel card)
     {
@@ -1134,7 +1582,38 @@ public partial class Main : Node, ICardSelector
         }
         catch(Exception) { return []; }
     }
+    private object CardPreviewView(CardModel card)=>new
+    {
+        name=Clean(card.Title),
+        cost=card.EnergyCost.GetWithModifiers(CostModifiers.All),
+        description=Clean(card.GetDescriptionForPile(card.Pile?.Type??PileType.None)),
+        type=Text(card.Type.ToLocString()),
+        hoverTips=CardHoverTips(card)
+    };
+    private static CardModel? SpecialRewardCard(SpecialCardReward reward)
+        =>reward.HoverTips.OfType<CardHoverTip>().Select(tip=>tip.Card).FirstOrDefault();
     private object CardView(CardModel c,int i,string? command=null,bool multiSelect=false)=>new {index=i+1,id=c.Id.Entry,name=c.Title,cost=c.EnergyCost.GetWithModifiers(CostModifiers.All),description=Clean(c.GetDescriptionForPile(c.Pile?.Type??PileType.None)),type=Text(c.Type.ToLocString()),hoverTips=CardHoverTips(c),targetType=c.TargetType.ToString(),command,multiSelect};
+    private object RewardOptionView(Reward reward,int index)
+    {
+        CardModel? card=reward is SpecialCardReward special?SpecialRewardCard(special):null;
+        bool stolenFromHopper=card!=null
+            && run?.CurrentRoom is CombatRoom combatRoom
+            && combatRoom.Encounter.Id.Entry=="THIEVING_HOPPER_WEAK";
+        return new
+        {
+            index,
+            name=card==null?Text(reward.Description):Clean(card.Title),
+            description=card==null?"":Text(reward.Description)+"\n"+Clean(card.GetDescriptionForPile(card.Pile?.Type??PileType.None)),
+            type=card==null?"":Text(card.Type.ToLocString()),
+            cost=card==null?(int?)null:card.EnergyCost.GetWithModifiers(CostModifiers.All),
+            costLabel="能量",
+            hoverTips=card==null?Array.Empty<object>():CardHoverTips(card),
+            kind=card==null?"":stolenFromHopper?"stolenCard":"specialCard",
+            cardPreview=card==null?null:CardPreviewView(card),
+            claimLabel=card==null?"":stolenFromHopper?"取回":"领取",
+            command="take "+index
+        };
+    }
     private object[] RewardCardOptions(CardReward reward)
     {
         List<CardModel> cards=reward.Cards.ToList();
@@ -1157,13 +1636,11 @@ public partial class Main : Node, ICardSelector
             if(cards.MinSelect==0)actions.Add(new {label="不选牌",command="skip"});
             if(cards.Cancelable)actions.Add(new {label="取消选牌",command="back"});
         }
-        else if(rewardCard is { } cardReward)
+        else if(rewardCard != null)
         {
-            if(CardRewardAlternative.Generate(cardReward).Any(alternative=>alternative.OptionId.Equals("Skip",StringComparison.OrdinalIgnoreCase)))
-                actions.Add(new {label="跳过奖励",command="skip"});
             if(rewardStageChoice==null)actions.Add(new {label="返回奖励列表",command="back"});
         }
-        else if(Rewards is { DisallowSkipping:false })actions.Add(new {label="跳过剩余奖励",command="skip"});
+        else if(Rewards is { DisallowSkipping:false } rewardSet&&rewardSet.Rewards.Any(reward=>!reward.SuccessfullySelected))actions.Add(new {label="跳过剩余奖励",command="skip"});
         else if(run?.CurrentRoom is TreasureRoom&&treasureOpened&&!treasurePicking&&!treasureDone&&RM.TreasureRoomRelicSynchronizer.CurrentRelics!=null)
             actions.Add(new {label="跳过遗物",command="skip"});
         else if(run?.CurrentRoom is MerchantRoom && CanLeave())
@@ -1176,8 +1653,15 @@ public partial class Main : Node, ICardSelector
     {
         if(CurrentChoice is { } choice)return choice.Views(this);
         if(rewardCard!=null)return RewardCardOptions(rewardCard);
-        if(Rewards!=null)return Rewards.Rewards.Where(r=>!r.SuccessfullySelected).Select((r,i)=>(object)new {index=i+1,name=Text(r.Description),description="",command="take "+(i+1)}).ToArray();
-        if(run?.CurrentRoom is EventRoom e)return e.LocalMutableEvent.CurrentOptions.Select((o,i)=>(object)new {index=i+1,name=EventOptionText(e.LocalMutableEvent,o.Title),description=EventOptionText(e.LocalMutableEvent,o.Description),disabled=o.IsLocked,command="choose "+(i+1)}).ToArray();
+        if(Rewards!=null)return Rewards.Rewards.Where(r=>!r.SuccessfullySelected).Select((r,i)=>RewardOptionView(r,i+1)).ToArray();
+        if(crystalSphere!=null)return [];
+        if(run?.CurrentRoom is EventRoom e)
+        {
+            var eventModel=e.LocalMutableEvent;
+            if(eventModel.IsFinished)
+                return [new {index=1,name=Text(new LocString("events","PROCEED.title")),description="",command="map"}];
+            return eventModel.CurrentOptions.Select((o,i)=>(object)new {index=i+1,name=EventOptionText(eventModel,o.Title),description=EventOptionText(eventModel,o.Description),disabled=o.IsLocked,command="choose "+(i+1)}).ToArray();
+        }
         if(run?.CurrentRoom is RestSiteRoom r)return r.Options.Select((o,i)=>(object)new {index=i+1,id=o.OptionId,name=Text(o.Title),description=Text(o.Description),disabled=!o.IsEnabled,command="choose "+(i+1)}).ToArray();
         if(run?.CurrentRoom is TreasureRoom&&!treasureOpened)return [new {index=1,name="开启宝箱",description="",command="open"}];
         if(run?.CurrentRoom is TreasureRoom&&treasureOpened&&!treasureDone)return RM.TreasureRoomRelicSynchronizer.CurrentRelics?.Select((o,i)=>(object)new {index=i+1,name=Text(o.Title),description=Text(o.DynamicDescription),command="choose "+(i+1)}).ToArray()??[];
@@ -1233,18 +1717,127 @@ public partial class Main : Node, ICardSelector
     }
     private object? CombatView()
     {
-        if(run?.CurrentRoom is not CombatRoom room || (!CM.IsInProgress && !CM.IsStarting)) return null;
+        SyncAutoPlayedCards();
+        CombatRoom? room=run?.CurrentRoom as CombatRoom;
+        if(room==null&&autoPlayedCardNames.Count>0) room=autoPlayTrackingRoom;
+        if(room==null) return null;
         return new
         {
+            active=ReferenceEquals(run?.CurrentRoom,room)&&(CM.IsInProgress||CM.IsStarting),
             type=room.RoomType.ToString(),
             isBoss=room.RoomType==RoomType.Boss,
-            name=Text(room.Encounter.Title)
+            name=Text(room.Encounter.Title),
+            autoPlayedCards=autoPlayedCardNames.ToArray()
         };
     }
+    private void CaptureAutoPlayedCards() => SyncAutoPlayedCards();
+    private void SyncAutoPlayedCards()
+    {
+        if(run==null)
+        {
+            autoPlayTrackingRoom=null;
+            autoPlayTrackingAct=null;
+            autoPlayTrackingCoord=null;
+            autoPlayedCardNames.Clear();
+            processedCombatHistoryCount=0;
+            return;
+        }
+        if(run.CurrentRoom is not CombatRoom room)
+        {
+            bool leftCombatNode=autoPlayTrackingRoom!=null
+                && (!run.CurrentMapCoord.HasValue
+                    || run.CurrentMapCoord.Value!=autoPlayTrackingCoord
+                    || run.CurrentActIndex!=autoPlayTrackingAct);
+            if(leftCombatNode)
+            {
+                autoPlayTrackingRoom=null;
+                autoPlayTrackingAct=null;
+                autoPlayTrackingCoord=null;
+                autoPlayedCardNames.Clear();
+                processedCombatHistoryCount=0;
+            }
+            return;
+        }
+        if(!ReferenceEquals(room,autoPlayTrackingRoom))
+        {
+            autoPlayTrackingRoom=room;
+            autoPlayTrackingAct=run.CurrentActIndex;
+            autoPlayTrackingCoord=run.CurrentMapCoord;
+            autoPlayedCardNames.Clear();
+            processedCombatHistoryCount=0;
+        }
+        var entries=CM.History.Entries.ToList();
+        if(entries.Count<processedCombatHistoryCount) processedCombatHistoryCount=0;
+        for(int i=processedCombatHistoryCount;i<entries.Count;i++)
+        {
+            if(entries[i] is CardPlayFinishedEntry finished
+                && finished.CardPlay.IsAutoPlay
+                && player!=null
+                && ReferenceEquals(finished.CardPlay.Card.Owner,player))
+                autoPlayedCardNames.Add(Clean(finished.CardPlay.Card.Title));
+        }
+        processedCombatHistoryCount=entries.Count;
+    }
+    private object[] CharacterMenuViews()
+    {
+        var unlockedIds=SaveManager.Instance.GenerateUnlockStateFromProgress().Characters.Select(character=>character.Id).ToHashSet();
+        var models=new CharacterModel[]{ModelDb.Character<Ironclad>(),ModelDb.Character<Silent>()};
+        return models.Select(character=>
+        {
+            bool unlocked=unlockedIds.Contains(character.Id);
+            RelicModel? startingRelic=character.StartingRelics.FirstOrDefault();
+            var lockedTitle=new LocString("main_menu_ui","CHARACTER_SELECT.locked.title");
+            var lockedRelicTitle=new LocString("main_menu_ui","CHARACTER_SELECT.lockedRelic.title");
+            var lockedRelicDescription=new LocString("main_menu_ui","CHARACTER_SELECT.lockedRelic.description");
+            return (object)new
+            {
+                id=CharacterKey(character),
+                name=unlocked?Text(character.Title):Text(lockedTitle),
+                description=unlocked?Text(new LocString("characters",character.Id.Entry+".description")):Text(character.GetUnlockText()),
+                hp=unlocked?character.StartingHp.ToString():"??/??",
+                gold=unlocked?character.StartingGold.ToString():"???",
+                deckSize=unlocked?character.StartingDeck.Count():0,
+                relic=unlocked?(startingRelic==null?"":Text(startingRelic.Title)):Text(lockedRelicTitle),
+                relicDescription=unlocked?(startingRelic==null?"":Text(startingRelic.DynamicDescription)):Text(lockedRelicDescription),
+                unlocked,
+            };
+        }).ToArray();
+    }
+
+    private object[] CharacterEpochUnlockViews()
+    {
+        if(!CanRevealSilent() || SaveManager.Instance.IsEpochRevealed<Silent1Epoch>()) return [];
+        EpochModel epoch=EpochModel.Get<Silent1Epoch>();
+        LocString unlockInfo=epoch.UnlockInfo;
+        unlockInfo.Add("IsRevealed",variable:false);
+        return
+        [
+            new
+            {
+                id=epoch.Id,
+                title=Text(epoch.Title),
+                unlockInfo=Text(unlockInfo),
+                revealLabel=Text(new LocString("timeline","EPOCH_INSPECT.unlockButton"))
+            }
+        ];
+    }
+
     private void Publish()
     {
         try
         {
+            SaveManager saveManager=SaveManager.Instance;
+            bool hasRunSave=HasPendingRunSave();
+            bool canAbandonRun=run!=null&&RM.IsInProgress&&!run.IsGameOver&&!Dead&&!gameWon;
+            int discoveredEpochCount=saveManager.GetDiscoveredEpochCount();
+            bool nativeTimelineForced=!DebugSettings.DevSkip&&discoveredEpochCount>0&&!hasRunSave;
+            bool runEnded=run==null||failed||Dead||Won;
+            object[] timelineCharacterUnlocks=!hasRunSave&&runEnded?CharacterEpochUnlockViews():[];
+            bool timelineCharacterUnlockPending=nativeTimelineForced&&timelineCharacterUnlocks.Length>0;
+            bool timelineVisible=nativeTimelineForced||saveManager.Progress.Epochs.Count>1;
+            bool timelineEnabled=timelineCharacterUnlockPending;
+            bool dailyUnlocked=saveManager.IsEpochRevealed<DailyRunEpoch>();
+            bool customUnlocked=saveManager.IsEpochRevealed<CustomAndSeedsEpoch>();
             var pcs=player?.PlayerCombatState;
             IReadOnlyList<Creature> activeEnemies=CM.IsInProgress||CM.IsStarting?Enemies:Array.Empty<Creature>();
             var enemyViews=activeEnemies.Select((e,i)=>
@@ -1261,16 +1854,87 @@ public partial class Main : Node, ICardSelector
                 object[] powerDetails=[];
                 try { powerDetails=PowerViews(e); }
                 catch(Exception) { }
-                return new {index=i+1,name,hp=e.CurrentHp,maxHp=e.MaxHp,block=e.Block,powers,powerDetails,intent=string.Join(" · ",intents.Select(intent=>intent.label)),intents};
+                object[] stolenCards=[];
+                try { stolenCards=StolenCardViews(e); }
+                catch(Exception) { }
+                return new {index=i+1,name,hp=e.CurrentHp,maxHp=e.MaxHp,block=e.Block,powers,powerDetails,stolenCards,intent=string.Join(" · ",intents.Select(intent=>intent.label)),intents};
             }).ToArray();
             var snapshot=new {
-                prompt=Prompt(),messages=messages.ToArray(),messageError,phase=failed?"error":Won?"victory":Dead?"defeat":Choosing?"choice":Playing?"combat":run?.CurrentRoom?.RoomType.ToString()??"ready",engineMode=TestMode.IsOn?"TestMode/headless":"normal",hasRunSave=SaveManager.Instance.HasRunSave,
+                prompt=Prompt(),messages=messages.ToArray(),messageError,phase=failed?"error":Won?"victory":Dead?"defeat":crystalSphere!=null?(run?.CurrentRoom?.RoomType.ToString()??"Event"):Choosing?"choice":Playing?"combat":run?.CurrentRoom?.RoomType.ToString()??"ready",engineMode=TestMode.IsOn?"TestMode/headless":"normal",hasRunSave,
+                runAbandon=new
+                {
+                    visible=canAbandonRun,
+                    enabled=canAbandonRun,
+                    label=Text(new LocString("gameplay_ui","PAUSE_MENU.GIVE_UP"))
+                },
+                mainMenu=new
+                {
+                    numberOfRuns=saveManager.Progress.NumberOfRuns,
+                    continueVisible=hasRunSave,
+                    abandonVisible=hasRunSave,
+                    singleplayerVisible=!hasRunSave,
+                    // Preserve the original gate when a supported character
+                    // unlock is waiting, and let the timeline entry handle it.
+                    // Other unimplemented timeline nodes do not deadlock this
+                    // singleplayer-only web menu.
+                    singleplayerEnabled=!hasRunSave&&!timelineCharacterUnlockPending,
+                    multiplayerEnabled=!nativeTimelineForced,
+                    compendiumVisible=saveManager.IsCompendiumAvailable(),
+                    compendiumEnabled=!nativeTimelineForced,
+                    timelineVisible,
+                    timelineEnabled,
+                    timelineForced=timelineCharacterUnlockPending,
+                    timelineCharacterUnlockPending,
+                    settingsEnabled=true,
+                    quitEnabled=true
+                },
+                timelineCharacterUnlocks,
+                mainMenuLabels=new
+                {
+                    continueGame=Text(new LocString("main_menu_ui","CONTINUE")),
+                    abandonRun=Text(new LocString("main_menu_ui","ABANDON_RUN")),
+                    singleplayer=Text(new LocString("main_menu_ui","SINGLE_PLAYER")),
+                    multiplayer=Text(new LocString("main_menu_ui","MULTIPLAYER")),
+                    compendium=Text(new LocString("main_menu_ui","COMPENDIUM")),
+                    timeline=Text(new LocString("main_menu_ui","TIMELINE")),
+                    settings=Text(new LocString("main_menu_ui","SETTINGS")),
+                    quit=Text(new LocString("main_menu_ui","QUIT"))
+                },
+                abandonConfirmation=new
+                {
+                    header=Text(new LocString("main_menu_ui","ABANDON_RUN_CONFIRMATION.header")),
+                    body=Text(new LocString("main_menu_ui","ABANDON_RUN_CONFIRMATION.body")),
+                    confirm=Text(new LocString("main_menu_ui","GENERIC_POPUP.confirm")),
+                    cancel=Text(new LocString("main_menu_ui","GENERIC_POPUP.cancel"))
+                },
+                modeOptions=new
+                {
+                    standard=new
+                    {
+                        title=Text(new LocString("main_menu_ui","STANDARD.title")),
+                        description=Text(new LocString("main_menu_ui","STANDARD.description")),
+                        unlocked=true
+                    },
+                    daily=new
+                    {
+                        title=Text(new LocString("main_menu_ui","DAILY.title")),
+                        description=Text(new LocString("main_menu_ui",dailyUnlocked?"DAILY.description":"DAILY.LOCKED.description")),
+                        unlocked=dailyUnlocked
+                    },
+                    custom=new
+                    {
+                        title=Text(new LocString("main_menu_ui","CUSTOM.title")),
+                        description=Text(new LocString("main_menu_ui",customUnlocked?"CUSTOM.description":"CUSTOM.LOCKED.description")),
+                        unlocked=customUnlocked
+                    }
+                },
+                characters=CharacterMenuViews(),
                 seed,act=run==null?0:run.CurrentActIndex+1,actCount=run?.Acts.Count??0,floor=run?.TotalFloor??0,location=run==null?"旅程尚未开始":Text(run.Act.Title),
-                player=player==null?null:new {name="战士",hp=player.Creature.CurrentHp,maxHp=player.Creature.MaxHp,block=player.Creature.Block,gold=player.Gold,energy=pcs?.Energy??0,maxEnergy=pcs?.MaxEnergy??player.MaxEnergy,turn=pcs?.TurnNumber??0,deck=player.Deck.Cards.Count,draw=pcs?.DrawPile.Cards.Count??0,discard=pcs?.DiscardPile.Cards.Count??0,exhaust=pcs?.ExhaustPile.Cards.Count??0,powers=player.Creature.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(),relics=player.Relics.Select(r=>new{name=Text(r.Title),description=Text(r.DynamicDescription)}).ToArray(),potions=player.PotionSlots.Select(p=>p==null?"空槽":Text(p.Title)).ToArray()},
+                player=player==null?null:new {name=CharacterName(player.Character),character=CharacterKey(player.Character),hp=player.Creature.CurrentHp,maxHp=player.Creature.MaxHp,block=player.Creature.Block,gold=player.Gold,energy=pcs?.Energy??0,maxEnergy=pcs?.MaxEnergy??player.MaxEnergy,turn=pcs?.TurnNumber??0,deck=player.Deck.Cards.Count,draw=pcs?.DrawPile.Cards.Count??0,discard=pcs?.DiscardPile.Cards.Count??0,exhaust=pcs?.ExhaustPile.Cards.Count??0,powers=player.Creature.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(),relics=player.Relics.Select(r=>new{name=Text(r.Title),description=Text(r.DynamicDescription)}).ToArray(),potions=player.PotionSlots.Select(p=>p==null?"空槽":Text(p.Title)).ToArray()},
                 hand=pcs?.Hand.Cards.Select((card,index)=>CardView(card,index)).ToArray()??[],
                 combat=CombatView(),
                 enemies=enemyViews,
-                options=Options(),actions=ChoiceActions(),selection=CurrentChoice is CardListChoice cardSelection?new {min=cardSelection.MinSelect,max=cardSelection.MaxSelect}:null,eventText=run?.CurrentRoom is EventRoom er?EventDescription(er.LocalMutableEvent):"",eventState=run?.CurrentRoom is EventRoom eventRoom?EventState(eventRoom):null,restState=run?.CurrentRoom is RestSiteRoom restSite?RestState(restSite):null,
+                options=Options(),actions=ChoiceActions(),selection=CurrentChoice is CardListChoice cardSelection?new {min=cardSelection.MinSelect,max=cardSelection.MaxSelect}:null,eventText=run?.CurrentRoom is EventRoom er?EventDescription(er.LocalMutableEvent):"",eventDialogue=run?.CurrentRoom is EventRoom dialogueRoom?ArchitectDialogueView(dialogueRoom.LocalMutableEvent):null,eventState=run?.CurrentRoom is EventRoom eventRoom?EventState(eventRoom):null,restState=run?.CurrentRoom is RestSiteRoom restSite?RestState(restSite):null,crystalSphere=CrystalSphereView(),
                 routes=run==null?[]:NextPoints().Select((p,i)=>new{index=i+1,name=p.PointType.ToString(),col=p.coord.col,row=p.coord.row}).ToArray(),map=MapView(),canLeave=CanLeave(),busy=Busy&&!Choosing
             };
             System.Console.WriteLine("@@SPIRE@@"+JsonSerializer.Serialize(snapshot));
@@ -1330,17 +1994,19 @@ public partial class Main : Node, ICardSelector
 
     private sealed class CommandError(string message):Exception(message);
     private const string Help="""
-开始旅程  new ironclad 种子 进阶0–10（种子和进阶可省略）/ continue 恢复原版存档
+开始旅程  new ironclad|silent [种子] [进阶0–10] / continue 恢复原版存档
+角色解锁  unlock silent（完成一局铁甲战士旅程后揭示原版角色）
 查看状态  status / hand / deck / draw / discard / exhaust / relics / potions
 出牌      play 手牌编号 敌人编号（需指定目标的牌；例：play 1 2）
 结束回合  end
 选择      choose 编号（多选时可跟多个编号）
 奖励      take 编号 / skip / back（back 返回奖励列表或取消原版可取消的选牌）
+水晶球    scry small|big 选择范围 / scry 列 行 占卜揭格
 地图      map / move 路线编号 / proceed
 商店      shop / buy 商品编号
 药水      potion 槽位 敌人编号（需指定目标的药水）/ discard-potion 槽位
 查阅      inspect 手牌编号或卡牌ID / cards 名称或ID
-放弃      abandon（删除原版当前旅程存档）
+放弃      abandon（按原版流程记录失败并结束旅程）
 界面      clear / help
 所有编号从 1 开始，以当前显示为准。
 """;

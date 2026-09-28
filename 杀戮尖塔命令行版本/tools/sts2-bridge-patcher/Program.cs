@@ -57,11 +57,18 @@ changed += ReplaceAsyncEntryPoint(
     "MegaCrit.Sts2.Core.Commands.RelicSelectCmd",
     "FromChooseARelicScreen",
     "SelectRelic");
+changed += ReplaceStaticEntryPoint(
+    module,
+    "MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere.NCrystalSphereScreen",
+    "ShowScreen",
+    "ShowCrystalSphere",
+    "MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent.CrystalSphereMinigame",
+    "MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere.NCrystalSphereScreen");
 changed += WrapCardRewardAlternatives(module);
 
 if (changed == 0)
 {
-    Console.WriteLine("All three command-choice bridge entry points were already patched.");
+    Console.WriteLine("All four command bridge entry points were already patched.");
     return 0;
 }
 
@@ -96,6 +103,32 @@ static int ReplaceAsyncEntryPoint(ModuleDefinition module, string typeName, stri
         Instruction.Create(OpCodes.Ret)
     ]);
     RemoveAsyncStateMachineAttribute(method);
+    return 1;
+}
+
+static int ReplaceStaticEntryPoint(
+    ModuleDefinition module,
+    string typeName,
+    string methodName,
+    string bridgeMethodName,
+    string parameterTypeName,
+    string returnTypeName)
+{
+    TypeDefinition type = FindType(module, typeName);
+    MethodDefinition method = type.Methods.Single(candidate => candidate.Name == methodName);
+    if (CallsBridge(method, bridgeMethodName)) return 0;
+    if (!method.IsStatic
+        || method.Parameters.Count != 1
+        || method.Parameters[0].ParameterType.FullName != parameterTypeName
+        || method.ReturnType.FullName != returnTypeName)
+        throw new InvalidOperationException($"Unexpected signature for {typeName}.{methodName}: {method.FullName}");
+
+    MethodReference bridgeMethod = CreateBridgeMethod(module, bridgeMethodName, method.ReturnType, [method.Parameters[0].ParameterType]);
+    ReplaceBody(method, [
+        Instruction.Create(OpCodes.Ldarg_0),
+        Instruction.Create(OpCodes.Call, bridgeMethod),
+        Instruction.Create(OpCodes.Ret)
+    ]);
     return 1;
 }
 

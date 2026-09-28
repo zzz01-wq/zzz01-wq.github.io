@@ -76,6 +76,17 @@ def _resolve_dotnet_root(explicit: str | None = None) -> Path:
     )
 
 
+def _godot_host_environment(dotnet_root: Path, parent: dict[str, str] | None = None) -> dict[str, str]:
+    environment = dict(os.environ if parent is None else parent)
+    # The game enables DevSkip when this variable exists, even if its value is
+    # "0". Keep the web host's original Timeline unlock flow independent from
+    # whichever shell or launcher started the Python server.
+    environment.pop("STS2_DEV_SKIP", None)
+    environment["DOTNET_ROOT"] = str(dotnet_root)
+    environment.setdefault("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+    return environment
+
+
 def _snapshot_from_line(line: str) -> dict:
     payload = line[len(SNAPSHOT_PREFIX) :].strip()
     try:
@@ -122,9 +133,7 @@ class GameSession:
         self._validate_runtime()
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         log_path = LOG_DIR / f"godot-{self.session_id[:12]}.log"
-        environment = os.environ.copy()
-        environment["DOTNET_ROOT"] = str(self.dotnet_root)
-        environment.setdefault("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+        environment = _godot_host_environment(self.dotnet_root)
         command = [
             str(self.godot),
             "--headless",

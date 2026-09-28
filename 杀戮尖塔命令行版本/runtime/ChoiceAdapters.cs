@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
+using Godot;
+using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
@@ -9,9 +12,12 @@ using MegaCrit.Sts2.Core.Entities.CardRewardAlternatives;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Rewards;
+using MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
+using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
@@ -28,6 +34,26 @@ public static class ChoiceAdapters
     {
         if (ReferenceEquals(current, main)) current = null;
         if (activeBundleContext?.Owner == main) activeBundleContext = null;
+    }
+
+    public static NCrystalSphereScreen? ShowCrystalSphere(CrystalSphereMinigame minigame)
+    {
+        if (TestMode.IsOn)
+        {
+            Main main = current ?? throw new InvalidOperationException("水晶球占卜适配器尚未连接到网页终端。");
+            main.RegisterCrystalSphere(minigame);
+            return null;
+        }
+
+        // Preserve the original graphical path outside the bridge's TestMode.
+        NCrystalSphereScreen screen = PreloadManager.Cache
+            .GetScene("res://scenes/events/custom/crystal_sphere/crystal_sphere_screen.tscn")
+            .Instantiate<NCrystalSphereScreen>(PackedScene.GenEditState.Disabled);
+        FieldInfo entityField = typeof(NCrystalSphereScreen).GetField("_entity", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new MissingFieldException(typeof(NCrystalSphereScreen).FullName, "_entity");
+        entityField.SetValue(screen, minigame);
+        (NOverlayStack.Instance ?? throw new InvalidOperationException("原版水晶球界面栈尚未初始化。")).Push(screen);
+        return screen;
     }
 
     public static async Task<IEnumerable<CardModel>> SelectBundle(

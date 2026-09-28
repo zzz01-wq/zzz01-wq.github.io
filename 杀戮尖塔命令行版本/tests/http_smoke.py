@@ -100,6 +100,8 @@ def main() -> int:
     environment = os.environ.copy()
     environment["DOTNET_ROOT"] = str(dotnet_root)
     environment["SPIRECLI_EPHEMERAL_SAVES"] = "1"
+    # Simulate an inherited shell flag; server.py must clear it for Godot.
+    environment["STS2_DEV_SKIP"] = "0"
     environment.pop("SPIRECLI_SAVE_DIR", None)
     server = None
     log_stream = log_path.open("w", encoding="utf-8")
@@ -180,12 +182,20 @@ def main() -> int:
         require(state.get("phase") == "combat" and int(state.get("player", {}).get("turn", 0)) >= 2,
                 "HTTP end command did not advance the original combat turn")
         state = command("abandon")
-        require(state.get("phase") == "ready" and not state.get("hasRunSave"),
-                "HTTP abandon command did not clear the terminal session's run")
+        require(state.get("phase") == "defeat" and not state.get("hasRunSave"),
+                "HTTP abandon command did not finalize the active run")
+        require(state.get("mainMenu", {}).get("timelineForced") is True
+                and any(item.get("id") == "SILENT1_EPOCH"
+                        for item in state.get("timelineCharacterUnlocks", [])),
+                "Inherited STS2_DEV_SKIP blocked the original Timeline reveal flow")
+        state = command("reveal SILENT1_EPOCH")
+        require(any(item.get("id") == "silent" and item.get("unlocked")
+                    for item in state.get("characters", [])),
+                "HTTP Timeline reveal did not unlock the original Silent character")
 
         report["result"] = "passed"
         report["http_status"] = 200
-        report["phases"] = ["ready", "Event", "combat", "ready"]
+        report["phases"] = ["ready", "Event", "combat", "defeat", "timeline reveal"]
         return 0
     except BaseException as exc:
         report["result"] = "failed"
