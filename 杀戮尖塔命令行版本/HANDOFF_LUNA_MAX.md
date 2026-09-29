@@ -869,3 +869,10 @@ TestMode/headless 的首句在原版 `OnRoomEnter()` 中会先清空当前选项
 `runtime/Main.cs` 现在为该历史列表维护独立游标；原版事件结算后读取新增 ID，通过原版 `ModelDb` 取简中卡名，并发送“升级了 卡名”。前端已有事件卡牌结果区域和历史消息缓存，因此不需要改网页。更新 `docs/sources.md`、`docs/interface.md` 与 `docs/engine-coverage.md`；覆盖文档明确这项新显示尚未做固定种子实战回归。
 
 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 warning、0 error；`git diff --check` 通过。未运行玩法测试或浏览器视觉检查。`runtime/Main.cs` / Godot Mono assembly SHA-256：`1dabc198047e8f429a39c5151c07c39066602e9418f7cfdfb5b012265c94e632` / `ba96f8e54dd5d3656d6c0e582a7e2b6ba1366875cf9a3ada52f36f9f4ad170f8`。需要重启 `server.py` 载入新规则程序集。
+
+
+## 73. 移除游戏/命令行说明文案（2026-09-29）
+
+用户要求先去掉游戏与命令行相关描述。页面已移除浏览器标题中的“命令版”、页头 build/非官方命令界面说明、工作区的游戏命令行标签、地图长说明、输入区提示和侧栏“终端 / 01”标记。常规命令格式提示不再占据输入区上方；输入框保持可用但不显示 placeholder。地图路线按钮改为序号呈现，悬停/无障碍提示不再提及手动输入命令。原版事件、卡牌、角色说明与错误提示保留。
+
+前端静态缓存版本为 `20260929-clean-meta-descriptions-1`。`node --check web/app.js` 与 `git diff --check` 通过；未做浏览器目视回归。刷新页面后生效。

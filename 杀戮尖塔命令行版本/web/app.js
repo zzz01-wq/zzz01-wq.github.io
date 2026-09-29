@@ -852,10 +852,7 @@
     const busyBlocked = Boolean(state && state.busy && verb && !readOnlyWhileBusy.has(verb) && verb !== "clear");
     input.disabled = !connected || submitting;
     submit.disabled = !connected || submitting || busyBlocked;
-    if (!connected) input.placeholder = "连接规则引擎后输入命令";
-    else if (submitting) input.placeholder = "命令正在执行…";
-    else if (state && state.busy) input.placeholder = "规则仍在结算；可输入 status 查看状态";
-    else input.placeholder = "输入 help 查看命令";
+    input.placeholder = "";
   }
   function fillCommand(command) {
     if (!command || !connected || submitting) return;
@@ -869,7 +866,7 @@
     connection.classList.add(kind);
     connectionText.textContent = label;
     connection.setAttribute("aria-label", label + "，按 Enter 重试连接");
-    connection.title = "重新读取规则引擎状态";
+    connection.title = "重新连接";
     connection.setAttribute("aria-disabled", connected || submitting ? "true" : "false");
     syncInput();
   }
@@ -1209,7 +1206,7 @@
       const node = svgEl("g", {class:"map-node" + (point.visited ? " visited" : "") + (point.current ? " current" : "") + (canSelectRoute ? " available" : routeIndex > 0 ? " route-preview" : "") + (point.start ? " start" : "") + (point.boss ? " boss" : "")});
       const type = String(point.type || "Unassigned");
       const mark = point.start ? "起" : point.boss ? "首" : (routeMarks[type] || "·");
-      const status = routeIndex > 0 ? (canSelectRoute ? "可前往：move " + routeIndex : "路线预览：完成当前房间后可 move " + routeIndex) : point.current ? "当前位置" : point.visited ? "已经过" : "";
+      const status = routeIndex > 0 ? (canSelectRoute ? "可前往第 " + routeIndex + " 条路线" : "路线预览：完成当前房间后可前往") : point.current ? "当前位置" : point.visited ? "已经过" : "";
       const title = [routeLabels[type] || type, "坐标 ("+point.col+", "+point.row+")", status].filter(Boolean).join(" · ");
       const svgTitle = svgEl("title");
       svgTitle.textContent = title;
@@ -1217,7 +1214,7 @@
         node.dataset.command = "move " + routeIndex;
         node.setAttribute("role", "button");
         node.setAttribute("tabindex", "0");
-        node.setAttribute("aria-label", title + "；点击立即前往，也可手动输入 move " + routeIndex);
+        node.setAttribute("aria-label", title + "；点击前往");
       } else if (point.current) {
         node.setAttribute("aria-current", "location");
         node.setAttribute("aria-label", title);
@@ -1242,8 +1239,8 @@
       item.type = "button";
       item.dataset.command = "move " + value(route.index, index+1);
       item.disabled = !s.canLeave || Boolean(s.busy) || !connected || submitting;
-      item.title = item.disabled ? "完成当前房间后可前往" : "点击立即前往；也可手动输入 move " + value(route.index, index+1);
-      item.append(el("b", "", "move " + value(route.index, index+1)), el("span", "", routeLabels[route.name] || value(route.name, "路线")));
+      item.title = item.disabled ? "完成当前房间后可前往" : "点击前往";
+      item.append(el("b", "", String(route.index || index+1).padStart(2, "0")), el("span", "", routeLabels[route.name] || value(route.name, "路线")));
       mapNext.append(item);
     });
     renderMapInk();
@@ -1567,7 +1564,7 @@
       row.dataset.targetType = cardTargetType(card);
       row.setAttribute("aria-label", value(card.name, "卡牌") + (needsTarget ? "，点击后选择目标" : "，点击出牌"));
       row.title = interactive
-        ? (needsTarget ? "点击卡牌后选择目标" : "点击立即出牌；也可在命令框输入 play " + value(card.index, ""))
+        ? (needsTarget ? "点击卡牌后选择目标" : "点击立即出牌")
         : "等待规则结算完成";
     }
     row.append(el("span", "card-index", String(card.index || "—").padStart(2, "0")));
@@ -1890,8 +1887,8 @@
           if (option.upgradePreview && selection && Number(selection.max) === 1)
             row.dataset.upgradeChoiceIndex = String(option.index || index + 1);
           row.disabled = Boolean(option.disabled || s.busy || !connected || submitting);
-          row.title = row.disabled ? value(option.type, "当前不可用") : "点击立即选择；也可在命令框手动输入 " + option.command;
-          row.setAttribute("aria-label", "立即执行 " + option.command + "：" + value(option.name, "选项"));
+          row.title = row.disabled ? value(option.type, "当前不可用") : "点击立即选择";
+          row.setAttribute("aria-label", "选择：" + value(option.name, "选项"));
           if (selection && option.multiSelect) {
             const optionIndex = Number(option.index || index + 1);
             const selected = selectionDraftIndices.has(optionIndex);
@@ -2006,7 +2003,7 @@
         confirm.dataset.selectionSubmit = "true";
         confirm.dataset.command = "choose" + (selected.length ? " " + selected.join(" ") : "");
         confirm.disabled = selected.length < minimum || selected.length === 0 || selected.length > maximum || Boolean(s.busy) || !connected || submitting;
-        confirm.title = confirm.disabled ? `至少选择 ${minimum} 张牌后确认` : "提交当前已选卡牌；也可在命令框手动输入对应 choose 命令";
+        confirm.title = confirm.disabled ? `至少选择 ${minimum} 张牌后确认` : "确认当前选择";
         actionList.append(confirm);
       }
       actions.forEach((action) => {
@@ -2015,7 +2012,7 @@
         button.type = "button";
         button.dataset.command = action.command;
         button.disabled = Boolean(s.busy || !connected || submitting);
-        button.title = "点击立即执行；也可在命令框手动输入：" + action.command;
+        button.title = "点击立即执行";
         actionList.append(button);
       });
       if (actionList.childElementCount) choice.append(actionList);
@@ -2033,7 +2030,7 @@
     openMap.type = "button";
     openMap.dataset.command = "map";
     openMap.disabled = Boolean(s.busy || !connected || submitting);
-    openMap.title = "打开可滚动路线图；也可在命令框输入 map";
+    openMap.title = "打开路线图";
     routePreview.append(openMap);
   }
   function applySnapshot(s) {
@@ -2065,9 +2062,9 @@
     connected = true;
     retryCount = 0;
     if (retryTimer) { window.clearTimeout(retryTimer); retryTimer = 0; }
-    setConnection("online", "规则引擎在线");
+    setConnection("online", "已连接");
     const messages = Array.isArray(s.messages) ? s.messages.filter(Boolean) : [];
-    setPrompt(s.messageError && messages.length ? messages.join("\n") : value(s.prompt, "输入 help 查看命令"), Boolean(s.messageError && messages.length));
+    setPrompt(s.messageError && messages.length ? messages.join("\n") : "", Boolean(s.messageError && messages.length));
     working.hidden = !submitting;
     syncPromptLine();
     renderWelcome(s);
@@ -2092,7 +2089,7 @@
       if (!quiet && welcome.hidden) input.focus();
     } catch (error) {
       connected = false;
-      setConnection("offline", "无法连接规则引擎");
+      setConnection("offline", "连接失败");
       setPrompt("服务暂不可用。可使用顶部连接状态重试。", true);
       scheduleRetry();
     }
@@ -2101,14 +2098,14 @@
     if (!connected || submitting) return;
     const verb = command.split(/\s+/, 1)[0].toLowerCase();
     if (state && state.busy && !readOnlyWhileBusy.has(verb) && verb !== "clear") {
-      setPrompt("规则仍在结算。请等待状态更新，或输入 status 查看当前状态。", true);
+      setPrompt("正在结算，请稍候。", true);
       return;
     }
     if (command.toLowerCase() === "clear") {
       recordCommand(command);
       addHistory(command);
       input.value = "";
-      setPrompt(value(state && state.prompt, "输入 help 查看命令"));
+      setPrompt("");
       syncInput();
       return;
     }
@@ -2170,7 +2167,7 @@
       const body = await readJson(response);
       if (!response.ok || body.error) {
         connected = response.status < 500;
-        setConnection(connected ? "warning" : "offline", connected ? "命令请求异常" : "服务暂不可用");
+        setConnection(connected ? "warning" : "offline", connected ? "操作异常" : "服务暂不可用");
         setPrompt(value(body.error, "命令请求失败（HTTP " + response.status + "）"), true);
         if (!connected) scheduleRetry();
         return;
@@ -2216,7 +2213,7 @@
     } catch (error) {
       connected = false;
       setConnection("offline", "连接中断");
-      setPrompt(error.message || "命令请求连接中断；该命令可能已经执行。请使用 status 查看当前状态，前端不会自动重发命令。", true);
+      setPrompt(error.message || "连接中断。操作可能已生效，请重新读取状态。", true);
       scheduleRetry();
     } finally {
       submitting = false;
