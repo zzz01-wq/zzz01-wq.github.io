@@ -763,3 +763,109 @@ TestMode/headless 的首句在原版 `OnRoomEnter()` 中会先清空当前选项
 当前 `runtime/Main.cs` / Godot Mono assembly SHA-256：`7f5d75b8da3c9341a182494c340c261dcce1113648f9af718aca6083ac8a4ae1` / `d10fcb9ef3ffda35a0b3594867364d27863b9d8f0e111ce8fc8e3f030361cd52`。
 
 没有覆盖储君全部卡牌、辉星消费卡、全部事件/敌人、普通图形版与视觉流程，不能宣称完整 1:1。新的 C# 程序集已经生成；运行中的网页服务不会热加载，需要重启 `server.py`，刷新页面后进入角色选择。manifest 仍将 Build `23811903` 归属标记为未独立核验。
+
+## 59. 接入时间线和百科大全文字页（2026-09-28）
+
+主菜单的“时间线”和“百科大全”现在可点击。时间线从原版 `Progress.Epochs` 取全部已建槽位，按 `EpochEra` 与 `EraPosition` 分组，并依据 `GetTimelineExpansion()` 画出原版节点连接；节点标题、故事章节、解锁条件、描述和奖励文字来自原版 `EpochModel` / 本地化。待揭示节点调用 `SaveManager.RevealEpoch()`，随后写入该 Epoch `QueueUnlocks()` 对应的角色待解锁标记、Neow 的 Silent 槽位和 timeline expansion；已揭示节点展开原版描述。未获得节点显示锁定态且点击不改变进度。强制揭示页仍按终端已有 Neow 预置存档策略处理，避免新档在首局前提前显示猎手解锁。
+
+百科按原版 `SaveManager.IsCompendiumAvailable()` 控制主入口，提供卡牌、遗物、药水、怪物、统计和历史页面。卡牌的顺序/解锁/发现、遗物与药水的详情及分类、Bestiary 的发现范围和行动、总体/角色数据与本机 RunHistory 均读取原版模型、进度与本地化；网页增加文本检索、分类筛选和列表详情浏览。
+
+原版依据与图形差异补记在 `docs/sources.md`、`docs/engine-coverage.md` 和 `docs/interface.md`。本轮 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功（0 warnings、0 errors）；`node --check web/app.js` 与 `git diff --check` 通过。未运行测试脚本或完整网页点按验收；Timeline 原版肖像/动画、百科图像和场景布局没有复刻；Run History 目前只显示对局摘要，没有原版逐层地图、牌组/遗物互动，不能宣称完整 1:1。运行中的 Host 不会热载入新 C# 程序集，需重启 `server.py` 并刷新网页查看。
+
+第59节最初记录了网页绘制 Epoch expansion 连线的实现；该表现已在第61节移除，当前按原版界面截图显示底部时间轴，不显示节点间连线。
+
+## 60. 修复时间线节点错位并允许返回（2026-09-28）
+
+用户反馈时间线连线杂乱、没有返回入口。根因是网页原来把各时代节点按 `EraPosition` 排序后用紧凑 flex 堆叠；原版将 `EraPosition` 作为时代内实际位置，缺少编号必须留空。现在每个时代栏使用相同网格行，节点按原版位置占行，连线仍取原版 `GetTimelineExpansion()` 并从已布局节点中心绘制。顶部“返回”始终可见；待揭示时也可以执行 `timeline close` 回到菜单，进度状态保留，仍可从菜单再次打开。原版 `NTimelineScreen.RefreshBackButton()` 在已有发现节点时会禁用返回；网页这里按用户要求放宽。
+
+更新依据说明：`docs/sources.md`、`docs/engine-coverage.md`、`docs/interface.md`。网页资源版本号已更新，浏览器会请求新版 JS/CSS。`node --check web/app.js` 与 `git diff --check` 通过；本轮未运行玩法测试。当前 8765 服务在监听，但 CUA 没有可连接的浏览器页，因此没有网页目视回归。此修改不涉及 C#，无需重编译/重启规则 Host；刷新网页即可载入前端变更。
+
+本节已由下一节修订：节点间连线已移除，时间线展开关系不再绘图。
+
+## 61. 时间线默认回到开始菜单并移除 Epoch 连线（2026-09-28）
+
+用户指出有待揭示 Epoch 时网页不该自动切入时间线，并提供原版界面截图，说明原版 Epoch 节点间没有扩展关系连线，底部只有横向时间轴。`applySnapshot()` 现只记录待揭示节点以供用户进入时间线，不自动改菜单视图；首次载入也不把上一页面残留的 `timelineOpen` 当作用户当前打开操作。放弃确认完成后也固定回到开始菜单。用户从菜单点击时间线或在已连接页面显式输入 `timeline open` 才进入。`GetTimelineExpansion()` 仍供原版可达性与解锁路径使用，前端不再读取/绘制关系线；节点下方增加按时代栏中心对齐的横向轴和刻度。节点仍按 `EraPosition` 留空定位，顶部返回仍可退出待揭示页面。
+
+同步更新 `docs/sources.md`、`docs/engine-coverage.md`、`docs/interface.md` 与页面资源版本。`node --check web/app.js`、`git diff --check` 通过；未运行玩法测试或浏览器目视检查。规则 Host 和 `runtime/Main.cs` 无需重编译；刷新页面载入前端即可。原版时间线场景仍未实现图像卡片与动画。
+
+## 62. 时间线门槛与无标签时代列（2026-09-29）
+
+用户要求时间线遵循原版入口条件，并询问时间线页面的空白时代栏。核对 `.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.MainMenu/NMainMenu.cs`、`NGameOverScreen.cs` 与 `NTimelineScreen.cs` 后确认：普通启动不会自动打开 Timeline；有真实待揭示 Epoch 时，原版禁用开始新旅程/百科入口并启用 Timeline，且待揭示项清空前禁用返回。结算页只有在本局发现 Epoch 时才会把玩家选择“主菜单”的操作路由进 Timeline。
+
+网页仍从普通启动菜单开始；真实待揭示节点出现时，时间线返回、`new` 开局和百科命令受原版门槛限制。放宽命令入口不能绕过 UI 禁用状态。终端为标准开局预先揭示 Neow；原版 `NeowEpoch.QueueUnlocks()` 因此会把 Silent 节点置为 `Obtained`。`CanRevealTimelineEpoch()` 继续要求原版 Ironclad 对局记录，屏蔽这条预置路径在首局前形成的假待揭示状态。
+
+截图中空标题栏来自简中 `eras.json` 只包含各大时代的 `*0.name/.year`，部分 `*1/*2` `EpochEra` 没有文字名称或年份。之前网页仍绘制空的标题底色/边线；现隐藏无标签标题栏的视觉框，同时保留 Era 列宽、`EraPosition` 节点位置和底部轴刻度。未添加自造时代名称。
+
+修改涉及 `runtime/Main.cs`、`web/app.js`、`web/style.css`、`web/index.html` 以及界面/来源/覆盖说明。`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 警告、0 错误；`node --check web/app.js` 与 `git diff --check` 通过。当前 `runtime/Main.cs` / Godot Mono assembly SHA-256 为 `3dd1fdac7677864866234616f4200f30ee8b38897a29ebd5d4bccb3567b3393cb` / `acd42e99aca271968eabf68286da7b182a8e0cd6e31db44dd9ccb70f7287e507`。未运行玩法烟测，也未做完整浏览器点击/目视回归。C# 修改需重启 `server.py`；网页 JS/CSS 资源版本已更新，需刷新页面。
+
+## 63. 时间线揭示与药水百科异常回归（2026-09-29）
+
+用户反馈点击未揭示 Timeline 节点后立即变为已揭示，并报告百科显示 `potionRarity=None` 越界异常。核对本机原版后确认：`NEpochSlot.OnRelease()` 对 `Obtained` 节点直接调用 `RevealEpoch()`、持久化揭示并打开详情；新揭示详情的 `UnlockAnimation()` 再调用 `EpochModel.QueueUnlocks()`。已揭示 `Complete` 节点只打开详情，普通点击 `NotObtained` 节点不会变更状态。网页按钮同样只为 `obtained && canReveal` 节点挂揭示动作，点击后经命令桥调用 `reveal <id>`；因此“待揭示节点点一次即揭示”符合原版行为，文字版将动画后的队列解锁直接应用。
+
+百科根因是 `ModelDb.AllPotions` 含 `DeprecatedPotion`（`Rarity=None`），网页原先把它传给抛出 `ArgumentOutOfRangeException` 的原版 `PotionRarityExtensions.ToLocString()`。现将列表过滤到原版 Potion Lab 载入的 Common、Uncommon、Rare、Event、Token 五个类别。
+
+新增 `tests/timeline_compendium_smoke.py`。隔离存档回归通过：百科成功载入 63 个药水条目且稀有度文本齐全；取得但未揭示的 Silent Epoch 可揭示并解锁猎手；未获得 Epoch 被拒绝揭示且状态保持 locked；前端代码路径只对可揭示 Epoch 发出命令。测试期间 TestMode/headless 的放弃流程记录了原版 UI 节点缺失导致的已知 `NullReferenceException`，宿主兜底随后完成原版进度与历史结算，整个检查通过。`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 为 0 warning、0 error；`node --check web/app.js`、Python 编译和 `git diff --check` 通过。报告：`.cache/timeline-compendium-smoke.json`。未进行普通图形游戏或实际浏览器目视点按验收。
+
+本次 `runtime/Main.cs` / Godot Mono assembly SHA-256：`4ffa8c71bea47ce33a316e6f0f2510631060d6a64d5d2eb8414fe829143786c5` / `4d2186055ba577684fc773b8e4578d1850a3878a2489072a725d2b4e4d6332dc`。C# 修复需重启 `server.py` 后生效；无网页资源变更，无需清缓存。
+
+## 64. 地图笔迹不再拦截路线节点（2026-09-29）
+
+用户反馈手绘层会影响节点点击，要求笔迹仍绘制在节点上层。此前擦除模式把 SVG 笔迹设为 `pointer-events:stroke`，绘图模式又拦截地图上所有 click，造成笔迹覆盖节点时无法前进。现保持 SVG DOM 绘制顺序不变，令笔迹始终穿透指针；绘图/擦除模式下，可达节点点击仍优先执行 `move`。绘制只从空白区域起笔，擦除改为根据指针和笔迹线段的最近距离选择，避免依赖路径作为点击目标。
+
+前端缓存版本已更新为 `20260929-map-ink-click-through-1`。涉及 `web/app.js`、`web/style.css`、`web/index.html` 和 `docs/interface.md`；无需重编译 C#，刷新页面后生效。此改动尚未进行浏览器点按实测。
+
+## 65. 角色状态显示 Power 具体效果（2026-09-29）
+
+用户指出右侧角色状态栏只有 HP/属性和简略状态，没有显示增益的具体效果。将 `PowerViews()` 的原版 `PowerModel.HoverTips` 说明、`PowerType` 和 `DisplayAmount` 加到玩家快照；侧栏按增益、减益、状态分类显示名称与动态效果描述，描述缺失时显示原版展示数值。旧 `player.powers` 字符串字段保留兼容。描述仍来自原版 Power 动态本地化，不把未定义语义的数值推断为回合数。
+
+`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 warning、0 error。前端缓存版本更新为 `20260929-player-power-effects-1`；需重启 `server.py` 并刷新页面。未运行玩法测试或浏览器目视检查。
+
+当前 `runtime/Main.cs` / Godot Mono assembly SHA-256：`f0c6dd8dcabcf5a9ba318a449191a0131bdc1281a19711ee7dc34c0cd42efba6` / `8ea6960cb549c3df540bf58a8f1f908fc2a803978dbc436aa6ecd1a8e21dd7a8`。
+
+
+## 66. 开始菜单隐藏未选择角色侧栏（2026-09-29）
+
+用户指出开始游戏界面尚未选择角色时，右侧仍显示铁甲战士占位状态。现在无玩家/无在途旅程时隐藏角色侧栏，并将主内容区切换为单列全宽；玩家快照出现后恢复侧栏。默认 HTML 也将侧栏标记为隐藏，避免首帧闪现占位角色。
+
+前端资源版本更新为 `20260929-start-menu-no-inspector-1`，并同步更新 `docs/interface.md`。不涉及 C#，无需重编译或重启规则 Host；刷新网页载入即可。本轮未进行浏览器目视回归。
+
+
+## 67. 右侧药水槽点击使用（2026-09-29）
+
+用户要求右侧药水栏可以点击使用。快照此前只提供药水名称；现改为逐槽提供原版名称、`DynamicDescription`、目标类型、使用状态和可用性。前端用高亮按钮展示；无目标药水点击后提交现有 `potion 槽位` 命令。指定敌人的药水点击槽位后高亮敌人目标，再点击敌人提交 `potion 槽位 敌人编号`；再次点击药水可取消目标选择。空槽、自动药水、禁用药水、原版自定义不可用状态以及非战斗阶段的战斗药水均禁用。实际效果与目标合法性仍由原版 `UsePotionAction` / `PotionModel.IsValidTarget` 结算校验。
+
+已同步 `docs/interface.md`、`docs/sources.md` 和 `docs/engine-coverage.md`，网页资源版本为 `20260929-clickable-potions-1`。`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 warning、0 error；`node --check web/app.js` 与 `git diff --check` 通过。`runtime/Main.cs` / Godot Mono assembly SHA-256 为 `eb28af95d60b4ccba3c782f602949472c232f6cfb942acfc55154e1d9a251a69` / `086762e3143e1679db43cf61f3efbb5cbb0708168ae620a483474638d2ce94d6`。本轮未运行玩法测试或浏览器目视回归；重启 `server.py` 并刷新网页后生效。
+
+
+## 68. 牌组查看、事件卡牌预览与选中留白（2026-09-29）
+
+用户要求改善选中项左右内边距、可从右侧牌组计数打开当前牌组，以及在事件选项发放具体卡牌时查看牌面。右侧“卡组”计数现在是按钮，打开原版 `Player.Deck.Cards` 列表；选中列表项会显示原版卡名、类型、能量、说明及卡牌词条提示。事件选项快照从 `EventOption.HoverTips.OfType<CardHoverTip>()` 提取已确定的原版卡牌；若选项文案提及卡名，就直接将文案内的卡名显示为可点击下划线；否则在说明下显示该卡名作为预览入口。事件选项整行仍可选择；事件卡牌与特殊卡牌奖励都不再提供额外“查看牌面”按钮，点击卡名只打开牌面，不调用事件回调或改动牌组。没有原版卡牌提示的随机结果不伪造详情。事件/手牌当前选中态补左右留白。
+
+原版依据和覆盖范围记入 `docs/sources.md`、`docs/interface.md`、`docs/engine-coverage.md`。规则端 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 warning、0 error；本轮前端调整后 `node --check web/app.js` 与 `git diff --check` 通过。`runtime/Main.cs` / Godot Mono assembly SHA-256：`477a5185fee185f044043e209bfbb38354a6713ae07bad01299befa3d5476b60` / `09da245d31a5ed6f4dcebc275bb51a00aacfc0cdeeed2f82faed0026fe1762d5`。前端缓存版本为 `20260929-inline-event-card-preview-1`。未运行玩法测试或浏览器视觉验收；C# 改动需重启 `server.py`，前端更新后刷新网页。不可据此宣称所有事件都提供确定的卡牌预览，或玩法完整 1:1。
+
+## 69. 卡牌关键词自定义悬浮提示（2026-09-29）
+
+用户指出卡牌“消耗”等词条使用问号光标/浏览器默认提示，要求改为悬停直接显示且体验更好。现用自定义 popover 展示从原版 `CardModel.HoverTips` 快照来的标题和格式化说明；鼠标悬停与键盘聚焦都会立即打开，浮层按锚点上/下方选择位置并限制在视口内。词条保留下划线作为提示，光标不再显示问号，也不再设置原生 `title`。
+
+网页缓存版本更新为 `20260929-custom-keyword-tooltip-1`；只改前端与说明文档，不需重新编译原版桥。`node --check web/app.js` 与 `git diff --check` 通过；没有浏览器视觉验收或逐个关键词检查，不声称所有词条均已覆盖或完整 1:1。
+
+## 70. 精简事件提示与英文眉题（2026-09-29）
+
+用户要求移除事件提示行“choose 编号处理事件选项 · map 预览路线”，并删除中文标题旁的英文副标题。普通事件选项提示现在留空；“ROUTE MAP”和“ENEMY INTENT”眉题已移除，保留“旅程路线”“敌人意图”中文标题和实际地图/关闭操作。
+
+网页缓存版本更新为 `20260929-clean-interface-copy-1`。`runtime/Main.cs`、`web/app.js`、`web/index.html`、`docs/interface.md` 已更新；规则端 `dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功（0 警告、0 错误），`node --check web/app.js` 和 `git diff --check` 通过。普通事件无提示文本且无结算状态时会收起空提示栏。未运行玩法测试或浏览器视觉验收；需重启 `server.py` 并刷新网页载入。
+
+## 71. 休息处铁匠卡牌升级预览（2026-09-29）
+
+用户要求休息处升级牌时像原版一样预览升级结果。原版 NDeckUpgradeSelectScreen 有“查看升级”切换，候选卡点击后由 NUpgradePreview 并排显示升级前后卡牌，确认后才执行 SmithRestSiteOption.OnSelect() 的 CardCmd.Upgrade()。现 CardListChoice 仅在 Smith 上附带克隆卡升级预览；网页可切换预览所有候选，选择时显示前后对比，确认才提交原版 choose，取消不改牌组。多卡升级选择也在提交前展示对比。
+
+修改 runtime/Main.cs、web/app.js、web/style.css、web/index.html 与来源/界面/覆盖文档；网页缓存版本为 20260929-rest-upgrade-preview-1。dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers 成功，0 警告、0 错误；node --check web/app.js 与 git diff --check 通过。runtime/Main.cs / Godot Mono assembly SHA-256 为 798ed37765393cce340fdbbd506f357ff6ea6ca0d4bc3fbf7d082960d2d789e6 / 334c547190be6768a51d8a0b988a3509136320c77e22ebf62f2260e5643fdebb。尚未运行玩法烟测或浏览器视觉验收。CardModel 副本的升级值由原版 API 生成，最终规则仍由原版铁匠选择流程结算；需重启 server.py 并刷新网页载入。
+
+
+## 72. 真理石板事件显示已升级卡牌（2026-09-29）
+
+用户指出真理石板事件“你一直读到现在，感觉有点头晕目眩！”没有显示升级了哪些卡牌。核对原版 `TabletOfTruth.LoseMaxHpAndUpgrade()`：前四次解读由原版事件 RNG 各从可升级牌中选一张，第五次升级当时全部可升级牌；每次均调用原版 `CardCmd.Upgrade()`。该命令将升级卡牌的 ModelId 记入当前地图点 `PlayerMapPointHistoryEntry.UpgradedCards`。
+
+`runtime/Main.cs` 现在为该历史列表维护独立游标；原版事件结算后读取新增 ID，通过原版 `ModelDb` 取简中卡名，并发送“升级了 卡名”。前端已有事件卡牌结果区域和历史消息缓存，因此不需要改网页。更新 `docs/sources.md`、`docs/interface.md` 与 `docs/engine-coverage.md`；覆盖文档明确这项新显示尚未做固定种子实战回归。
+
+`dotnet build runtime --configfile runtime/NuGet.Config --disable-build-servers` 成功，0 warning、0 error；`git diff --check` 通过。未运行玩法测试或浏览器视觉检查。`runtime/Main.cs` / Godot Mono assembly SHA-256：`1dabc198047e8f429a39c5151c07c39066602e9418f7cfdfb5b012265c94e632` / `ba96f8e54dd5d3656d6c0e582a7e2b6ba1366875cf9a3ada52f36f9f4ad170f8`。需要重启 `server.py` 载入新规则程序集。

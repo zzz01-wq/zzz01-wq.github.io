@@ -52,6 +52,12 @@
 - `.cache/source/MegaCrit.Sts2.Core.Commands/CardCmd.cs` 的牌堆变牌路径在目标是玩家牌组时，将 `new CardTransformationHistoryEntry(original, replacement)` 写入 `runState.CurrentMapPointHistoryEntry.GetEntry(original.Owner.NetId).CardsTransformed`。
 - `.cache/source/MegaCrit.Sts2.Core.Runs.History/CardTransformationHistoryEntry.cs` 保存原版 `SerializableCard.OriginalCard` 与 `FinalCard`，其中包含卡牌 `ModelId` 和升级等级。终端用 `ModelDb.GetById<CardModel>()` 格式化标题，只展示原版历史中的实际结果，不在网页层随机或推断变牌结果。
 
+## 本机原版牌组与事件卡牌预览依据
+
+- `.cache/source/MegaCrit.Sts2.Core.Entities.Players/Player.cs` 将 `Deck` 初始化为 `new CardPile(PileType.Deck)`；右侧牌组清单和卡牌详情直接读取 `Player.Deck.Cards`。卡牌费用、类型、本地化描述和特殊词条提示分别来自 `CardModel.EnergyCost`、`CardType.ToLocString()`、`GetDescriptionForPile()` 和 `CardHoverTips()`。
+- `.cache/source/MegaCrit.Sts2.Core.Events/EventOption.cs` 暴露 `IEnumerable<IHoverTip> HoverTips`；`.cache/source/MegaCrit.Sts2.Core.HoverTips/CardHoverTip.cs` 暴露对应的原版 `CardModel`。网页只对 `HoverTips` 中明确包含 `CardHoverTip` 的事件选项显示牌面入口，不猜测动态、随机或未实例化的卡牌。
+- 原版事件例证：`.cache/source/MegaCrit.Sts2.Core.Models.Events/Trial.cs` 为“审判”选项附加愧疚、羞耻或疑虑的卡牌提示；`.cache/source/MegaCrit.Sts2.Core.Models.Events/Bugslayer.cs` 给两种奖励选项附加具体奖励卡提示。牌面内容由原版 `CardModel` 格式化，查看操作不调用事件选项，也不改变奖励/牌组状态。
+
 ## 本机原版结束回合与自动打牌依据
 
 - `.cache/source/MegaCrit.Sts2.Core.Nodes.Combat/NEndTurnButton.cs` 在原版按钮触发时，将 `EndPlayerTurnAction` 加入原版动作队列；网页手牌区的“结束回合”只提交终端既有的 `end` 命令，该命令同样创建 `EndPlayerTurnAction`，不在网页层模拟回合切换。
@@ -70,7 +76,7 @@
 - `.cache/source/MegaCrit.Sts2.Core.Entities.Cards/CardTypeExtensions.cs` 的 `ToLocString()` 将 Attack、Skill、Power 等卡牌类型对应到原版 `gameplay_ui.CARD_TYPE.*`；运行时快照直接格式化该原版本地化，不在网页自造类型标签。
 - `.cache/source/MegaCrit.Sts2.Core.Models/CardModel.cs` 的 `HoverTips` 汇总卡牌自身、附魔、灾祸、动态重放、充能球、格挡和 `CardKeyword` 提示；关键词提示由 `.cache/source/MegaCrit.Sts2.Core.HoverTips/HoverTipFactory.cs` 及 `CardKeyword.GetTitle()/GetDescription()` 构造。
 - `.cache/source/MegaCrit.Sts2.Core.HoverTips/HoverTip.cs` 保留原版本地化标题和格式化说明；`static_hover_tips.json` 的 `REPLAY_STATIC` 与 `REPLAY_DYNAMIC` 分别提供简体中文“重放”标题及“将这张牌额外打出一次/Times 次”的说明。
-- `runtime/Main.cs` 将卡牌类型和 `HoverTips` 中的原版标题、说明放入快照；网页仅在卡牌描述中为与原版提示标题匹配的词条添加悬停说明，不自行编写规则文案。
+- `runtime/Main.cs` 将卡牌类型和 `HoverTips` 中的原版标题、说明放入快照；网页仅在卡牌描述中为与原版提示标题匹配的词条添加悬停说明，不自行编写规则文案。词条用自定义 `popover` 提示框呈现，悬停/键盘聚焦即显示，并在视口边缘调整位置；不依赖浏览器 `title` 文本或问号帮助光标。
 
 ## 本机原版水晶球占卜流程依据
 
@@ -82,12 +88,12 @@
 - `.cache/source/MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere/NCrystalSphereScreen.cs` 提供原版 `ShowScreen()`、格子和工具按钮入口；它预先绘制物品图像，并由 `NCrystalSphereMask.UpdateMat()` 按格子状态遮盖/揭开图像，完整揭示时 `NCrystalSphereItem.OnRevealed()` 才播放揭示动画。简中 `events.json` 的 `CRYSTAL_SPHERE.minigame.*` 与 `CRYSTAL_SPHERE.button.DIVINATION_LABEL_*` 提供占卜说明、次数和工具名称。TestMode 下 `NCrystalSphereCell.Create()` / `NCrystalSphereItem.Create()` 返回 `null`，因此桥接补丁只重定向暂存 DLL 中 `ShowScreen()`，把已有原版模型交给网页；每次网页工具/格子按钮仍调用 `CrystalSphereMinigame.SetTool()` / `CellClicked()`。目前网页只画完整揭示的物品标签，不复刻逐格揭开原版物品纹理的像素效果；这是一条窄范围显示适配，不代表图形小游戏、其他图形回调或全部游戏完整 1:1。
 - `runtime/Main.cs` 快照仅在物品所占格子全部非隐藏时发送该物品的位置、尺寸与原版类型信息；格子动作经 `scry` 命令输入解析，不从随机布局推断或暴露尚未揭开的内容。原版奖励列表活动时，网页收起已结束的棋盘并把滚动视图移回奖励选项，避免把领取入口挤出视口。`EventInitializationPending()` 在已登记水晶球模型时结束等待，避免事件空选项被误判为初始化卡住；事件阶段保持为原房间阶段。
 
-## 本机原版怪物状态文本依据
+## 本机原版角色与怪物状态文本依据
 
 - `.cache/source/MegaCrit.Sts2.Core.Models/PowerModel.cs` 的 `HoverTips` 用 `SmartDescription`（缺省时用 `Description`），并加入 `Amount`、`DynamicVars`、施加者、目标和拥有者等原版变量后格式化说明；`GetDumbHoverTip()` 是不含智能动态说明的原版回退。
 - PowerType 定义将状态分类为 Buff 与 Debuff；终端只据此标注增益/减益类别，不自行推断持续时间。
 - `.cache/extracted/localization/zhs/powers.json` 提供本机提取的中文 Power 文本。例如 `VULNERABLE_POWER.smartDescription` 把 `Amount` 写为回合数，`STRENGTH_POWER.smartDescription` 将 `Amount` 写为攻击伤害变化。终端通过原版 `PowerModel.HoverTips` 格式化显示，不把其他 Power 的 `Amount` 一概解释成回合。
-- `runtime/Main.cs` 将原版标题、`PowerType` 和已格式化说明写入状态快照；网页仅负责排版。缺少动态说明的个别 Power 仍以原版 `Description` 回退，其运行时覆盖需要另行验证。
+- `runtime/Main.cs` 的 `PowerViews()` 将原版标题、`PowerType`、`DisplayAmount` 和格式化说明写入角色及敌人快照；`PowerDescription()` 优先取 `PowerModel.HoverTips`，并使用原版 `GetDumbHoverTip()` / `Description` 回退。角色侧栏与敌人栏按原版增益/减益/状态类型显示具体说明，网页不自行将通用数值解释为回合数。缺少动态说明的个别 Power 仍以原版 `Description` 回退，其运行时覆盖需要另行验证。
 
 ## 本机原版 Boss 战信息依据
 
@@ -161,10 +167,41 @@
 - `RunManager.Abandon()` 通过 `TaskHelper.RunSafely(AbandonInternal())` 异步执行。headless 主机缺少 `NCapstoneContainer` / `NMapScreen` 时，原版关闭 UI 节点会捕获 `NullReferenceException` 后继续设置 `IsAbandoned` 并调用 `GuaranteeKillAllPlayers()`。网页桥在活动旅程的 `Settle()` 中等待该原版流程；若等待 120 帧后玩家仍存活且没有正在结算的动作，则调用同一原版 `CreatureCmd.Kill(player.Creature, force:true)` 兜底，再走原版 `RunManager.OnEnded(false)` 和存档清理。此兜底是对异步 UI 流程的 headless 适配，不代表图形模式完整复刻。
 - `.cache/source/MegaCrit.Sts2.Core.Timeline.Epochs/NeowEpoch.cs` 的 `QueueUnlocks()` 通过 `ObtainEpochOverride(SILENT1_EPOCH, ObtainedNoSlot)` 建立静默猎手节点，再由 `EpochModel.QueueTimelineExpansion()` 调用 `UnlockSlot()` 将其变为 `Obtained`。网页启动时跳过该原版 Timeline 场景，因此 `EnsureTerminalTimelineProgress()` 复用这一存档状态迁移；旧存档中已存在但状态为 `NoSlot` / `NotObtained` 的 Silent epoch 也必须提升，不能只处理 epoch 条目缺失的情况。显示可揭示节点仍由原版 `GetRevealableEpochs()` 决定，角色最终解锁仍需要原版 `SaveManager.RevealEpoch()` 与 `Silent1Epoch.QueueUnlocks()` 的存档效果。
 - 网页主菜单按原版存档状态隐藏单人模式入口，只在存在 run 存档时显示继续和放弃。放弃确认使用上述原版本地化；`runtime/Main.cs` 从内存运行态或 `LoadRunSave()` 取得 `SerializableRun`，调用原版进度更新与历史记录 API，再删存档。无存档时，单人模式根据 `Progress.NumberOfRuns` 直达角色选择或进入模式页。
-- 原版 `NMainMenu.UpdateTimelineButtonBehavior()` 在 `!DevSkip`、已发现待揭示 Epoch 且没有 run 存档时强制打开 Timeline，并禁用单人模式、多人模式和百科入口。网页对已满足解锁条件的静默猎手节点实现了可点击的窄版揭示页；其它未接入的 Timeline 节点不锁死单人旅程。
+- 原版 `NMainMenu.UpdateTimelineButtonBehavior()` 在 `!DevSkip`、已发现待揭示 Epoch 且没有 run 存档时强制打开 Timeline，并禁用单人模式、多人模式和百科入口。网页沿用待揭示条件，按原版存档中所有可见 Epoch 建立时间线浏览页；原版 `NEpochSlot.OnRelease()` 中可揭示节点与已揭示节点分别对应揭示、查看详情，未获得节点点击不触发状态变化。
 - `.cache/source/MegaCrit.Sts2.Core.Debug/DebugSettings.cs` 将 `DevSkip` 定义为 `Environment.GetEnvironmentVariable("STS2_DEV_SKIP") != null`；只要变量存在，哪怕值为 `0` 或空字符串，也会跳过原版强制 Timeline。`server.py` 启动 Godot Host 前通过 `_godot_host_environment()` 清除此调试变量，避免网页服务继承启动 shell 中的设置。绕过网页服务直接启动 Godot 时，应从环境中取消 `STS2_DEV_SKIP`。
-- 网页还未实现每日、自定、多人、百科、设置及退出页面，也没有完整时间线图谱/节点动画。只接入标准单人旅程和静默猎手的揭示入口，不代表这些模式或 Timeline 已经完整还原。
+- 网页仍未接入每日、自定、多人、设置及退出页面；时间线和百科已接入文字浏览，不复刻原版图片、场景、动画、Timeline 连线或完整卡面布局，也不代表两者或游戏完整 1:1。
 - `.cache/source/MegaCrit.Sts2.Core.Saves.Managers/ProgressSaveManager.cs` 的 `UpdateWithRunData()` 对标准单人胜/负记录角色 `TotalWins/TotalLosses`；自定义和每日模式被原版排除。`Silent1Epoch.unlockInfo` 从原版 `epochs.json` 读取；网页只有在原版 `GetRevealableEpochs()` 与铁甲战士标准对局记录均满足时才显示节点。点击后调用 `SaveManager.RevealEpoch()`，并按 `.cache/source/MegaCrit.Sts2.Core.Timeline.Epochs/Silent1Epoch.QueueUnlocks()` 写入角色解锁标记和时间线扩展状态。`unlock silent` 保留作兼容命令；角色选择页本身仍不显示 Epoch 条件。
-- `.cache/source/MegaCrit.Sts2.Core.Saves.Managers/RunSaveManager.cs` 的 `HasRunSave` 会在主存档不存在时继续检查 `current_run.save.backup`。2026-09-28 服务日志记录了原版 `RunManager.OnEnded(false)` 已写入进度与失败历史，但 `GodotFileIo.DeleteFile` 删除主存档/备份失败。当前桥接按原版 `SaveManager.CleanupStaleCurrentRunSaveForProfile()` 的规则读取主存档（若主存档缺失则读 `.backup`）中的 `start_time`，并检查同名 `${StartTime}.run` 历史；已记录历史的存档不再被终端当成未完成旅程。活动 host 已调用 `RunManager.OnEnded(false)` 时也将残留存档视为已结算。菜单清理仍会尝试删除主存档及 `.backup`；已结算时的放弃清理按历史名去重，避免重复写失败次数和历史。隔离存档烟测已覆盖活动旅程放弃、重启后从菜单放弃存档、失败局计数、静默猎手 Epoch 出现、揭示 Epoch 后角色可用；记录见 `.cache/silent-character-smoke.json`。网页从主菜单放弃已恢复的存档后，如原版状态要求显示时间线，确认回调必须保留该视图；该路径现已修正。放弃只完成败局记录，角色仍须按原版揭示 `SILENT1_EPOCH` 后才可选择。
+- `.cache/source/MegaCrit.Sts2.Core.Saves.Managers/RunSaveManager.cs` 的 `HasRunSave` 会在主存档不存在时继续检查 `current_run.save.backup`。2026-09-28 服务日志记录了原版 `RunManager.OnEnded(false)` 已写入进度与失败历史，但 `GodotFileIo.DeleteFile` 删除主存档/备份失败。当前桥接按原版 `SaveManager.CleanupStaleCurrentRunSaveForProfile()` 的规则读取主存档（若主存档缺失则读 `.backup`）中的 `start_time`，并检查同名 `${StartTime}.run` 历史；已记录历史的存档不再被终端当成未完成旅程。活动 host 已调用 `RunManager.OnEnded(false)` 时也将残留存档视为已结算。菜单清理仍会尝试删除主存档及 `.backup`；已结算时的放弃清理按历史名去重，避免重复写失败次数和历史。隔离存档烟测已覆盖活动旅程放弃、重启后从菜单放弃存档、失败局计数、静默猎手 Epoch 出现、揭示 Epoch 后角色可用；记录见 `.cache/silent-character-smoke.json`。网页从主菜单放弃已恢复的存档后回到开始菜单；如果有待揭示节点，时间线作为可用入口，开始新旅程与百科受原版门槛限制。放弃只完成败局记录，角色仍须按原版揭示 `SILENT1_EPOCH` 后才可选择。
 - `.cache/source/MegaCrit.Sts2.Core.Commands/CreatureCmd.cs` 在 `TestMode.IsOff` 才会于玩家死亡后调用 `RunManager.OnEnded(false)`。无窗口宿主固定运行 TestMode，所以 `Main.RecordHeadlessDefeatIfNeeded()` 在原版战斗/事件死亡结算点调用同一原版 `RunManager.OnEnded(false)`，让原版 `ProgressSaveManager` 写入失败局计数。测试专用 `__test_complete_run` 仅触发该结束分支，不作为生产玩法操作。
 - 以上是网页菜单、角色入口和头尾局数路径的源码依据及 TestMode 适配说明；未覆盖普通图形模式下的 Timeline 动画、剧情揭示流程、Steam 档案同步或所有角色/模式规则，不代表完整 1:1。
+
+## 本机原版时间线与百科大全依据
+
+- `.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.Timeline/NTimelineScreen.cs` 读取原版 `Progress.Epochs`，依据 `EpochModel.Era`、`Year` 和 `EraPosition` 放置节点；`GetSlot(Era, position)` 也按确切位置取节点。网页必须保留空缺的 `EraPosition` 行，不能把节点紧密堆叠，否则会偏离原版节点位置。`GetTimelineExpansion()` 提供 Epoch 可达/解锁关系，不作为网页绘制节点连线的依据；`NEpochSlot.OnRelease()` 对 `Obtained` 节点调用揭示，对 `Complete` 节点打开详情，`NotObtained` 节点只允许查看锁定提示。详情中的标题、剧情、章节号、解锁说明和解锁文本来自 `EpochModel` 与原版本地化。
+- `.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.MainMenu/NMainMenu.cs` 的 `UpdateTimelineButtonBehavior()` 只在存在待揭示 Epoch、且没有 run 存档时禁用新旅程/多人/百科并启用时间线；它不会在普通 `_Ready()` 中自动打开时间线。`.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen/NGameOverScreen.cs` 仅在本局发现 Epoch 时，把结算页的主菜单按钮路由到 Timeline；否则回普通主菜单。`NTimelineScreen.RefreshBackButton()` 在 `GetDiscoveredEpochCount()>0` 时禁用返回。当前终端对这个流程使用页面入口适配：普通启动不自动打开；真实待揭示项锁住返回、开局与百科入口，逐项揭示后恢复。标准旅程宿主预先揭示 Neow 会按原版 `QueueUnlocks()` 展开静默猎手节点；前端仅在铁甲战士已有原版对局记录后才把这个预置节点算作可揭示项，避免首局前锁死菜单。
+- `.cache/source/MegaCrit.Sts2.Core.Timeline/EpochModel.cs` 从 `eras` 本地化表按具体 `EpochEra` 键读取名称与年份，`NEraColumn.Init()` 仍会绘制对应时代图标；`.cache/extracted/localization/zhs/eras.json` 仅包含 `PREHISTORIA0`、`SEEDS0` 等基准时代键，没有部分 `*1/*2` 变体的 `.name/.year`。这些列因此合法地没有文字标签。网页不加载原版时代图标；为避免空框误导，隐藏无标签列的标题边框与底色，同时保留列宽及节点位置。
+- `SaveManager.GetRevealableEpochs()` 根据原版 Epoch 状态与 `GetTimelineExpansion()` 图可达性筛选揭示资格；`SaveManager.RevealEpoch()` 执行揭示。`NEpochInspectScreen` 揭示完成时才调用 `QueueUnlocks()`；网页没有原版 Timeline UI，所以运行时保留 `RevealEpoch()` 并补写每个 Epoch 的持久化解锁状态。Neow 初始化与静默猎手第一节点仍受网页标准存档策略约束：标准旅程启动前已揭示 Neow，而原版 `NeowEpoch.QueueUnlocks()` 会将 `SILENT1_EPOCH` 从 `ObtainedNoSlot` 展开为 `Obtained`。因此网页仅对这条宿主预置路径额外检查铁甲战士已有一局记录，避免标准开局初始化提前开放猎手；真实解锁仍以原版进度和 Epoch 状态为准。
+- 原版百科入口是否可用由 `SaveManager.IsCompendiumAvailable()` 决定。`NCardLibraryGrid.InitialSorter` 按原版卡池、稀有度、ModelId 排列卡牌，发现/解锁分别来自 `Progress.DiscoveredCards` 和原版解锁池；`NRelicCollection.LoadRelics()`、`NPotionLab.LoadPotions()` 使用相应发现集合和原版类别。网页对应显示原版模型本地化、说明和进度状态，并提供文本筛选。
+- `.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.Bestiary/NBestiary.cs` 依已发现幕、敌人击败记录和 `ShouldShowInCompendium` 构造怪物条目；怪物名称、遭遇名和招式通过本机模型与原版本地化读取。`NGeneralStatsGrid` 与 `NRunHistory` 是统计、历史数据来源；网页使用原版进度统计和 `SaveManager` 历史存档，按原版入口条件隐藏未开放的 Bestiary/历史分区。
+- 网页时间线按 EraPosition 网格保留原版节点高度；时代扩展关系继续用于原版可达性/解锁判定，但不绘制节点间连线。按用户提供的原版截图，仅在节点下方绘制横向时间轴和时代刻度。普通启动停留在开始菜单；真实待揭示项出现时，时间线入口保持可用，开始新旅程、百科和时间线返回按原版状态禁用，全部揭示后恢复。原版结束页的“主菜单/解锁”按钮过渡尚未单独做成网页画面。网页使用文字时代栏布局，不加载原版 Godot 场景、Epoch 肖像与粒子、卡牌/遗物/药水图像、Bestiary 版面或翻页/揭示动画。Run History 暂以对局摘要呈现，不复刻原版楼层地图、牌组/遗物图标和玩家选择交互。模型与进度状态来自本机原版输入，不因此宣称页面像素级或完整功能 1:1。
+- `.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.Timeline/NEpochSlot.cs` 的 `OnRelease()` 对 `Obtained` 状态直接调用 `RevealEpoch()`，立即持久化揭示并打开详情；`Complete` 状态点击只打开已揭示详情，`NotObtained` 正常点击不会改状态。新揭示会以 `wasRevealed=true` 进入 `NEpochInspectScreen.Open()`，再在 `UnlockAnimation()` 调用 `EpochModel.QueueUnlocks()` 并保存进度。网页点击资格由 `state == obtained && canReveal` 限定，点击后经 HTTP 桥发 `reveal <id>`，其他未获得节点没有揭示动作；文字版立即应用揭示及对应解锁状态，不复刻揭示动画。该点击行为与原版一致。
+- `.cache/source/MegaCrit.Sts2.Core.Nodes.Screens.PotionLab/NPotionLab.cs` 只载入 Common、Uncommon、Rare、Event 和 Token 五类；`NPotionLabCategory.LoadPotions()` 按传入稀有度精确筛选。`.cache/source/MegaCrit.Sts2.Core.Models.Potions/DeprecatedPotion.cs` 的稀有度是 `None`，而 `PotionRarityExtensions.ToLocString()` 明确对 `None` 抛出 `ArgumentOutOfRangeException`。因此百科药水列表同样只保留原版五个药水分类，不把内部/废弃药水送入本地化。`tests/timeline_compendium_smoke.py` 以隔离存档确认图鉴可打开、63 个可见药水都有原版稀有度文本，并验证待揭示节点点击路径、未获得节点拒绝揭示及揭示后静默猎手解锁；报告在 `.cache/timeline-compendium-smoke.json`。
+
+
+## 本机原版药水点击使用依据
+
+- `.cache/source/MegaCrit.Sts2.Core.Models/PotionModel.cs` 提供 `Title`、包含动态变量的 `DynamicDescription`、`Usage`、`TargetType`、`IsQueued` 与 `PassesCustomUsabilityCheck`；`PotionUsage` 枚举区分 `CombatOnly`、`AnyTime`、`Automatic` 和 `None`。网页药水槽显示原版名称和动态说明，是否可点击按这些运行时属性及玩家移除药水状态判断。
+- `.cache/source/MegaCrit.Sts2.Core.GameActions/UsePotionAction.cs` 按药水槽位与可选目标执行原版 `UsePotionAction`，并调用药水原版 `IsValidTarget` 与使用流程。现有命令 `potion 槽位 [目标编号]` 已通过该动作队列执行；网页点击无目标药水提交槽位命令，指定敌人的药水则先选择药水再点敌人，最终规则仍由运行时原版对象校验。本次只接入文字按钮交互，不复刻原版药水图像、拖拽或动画。
+
+## 本机原版休息处铁匠升级预览依据
+
+- .cache/source/MegaCrit.Sts2.Core.Entities.RestSite/SmithRestSiteOption.cs 的铁匠行动以 CardSelectCmd.FromDeckForUpgrade() 请求升级牌；CardSelectorPrefs 为可取消且要求手动确认，只有选定并确认卡牌后才调用原版 CardCmd.Upgrade()。网页只有在确认预览后才提交对应选择。
+- .cache/source/MegaCrit.Sts2.Core.Nodes.Screens.CardSelection/NDeckUpgradeSelectScreen.cs 为升级选牌提供原版“查看升级”切换；切换后 NCardGrid.IsShowingUpgrades 将候选卡片暂时显示成升级预览。点击单张候选牌时原版打开 NUpgradePreview，并要求确认或取消；多选则在选满后展示升级后的候选卡牌并确认。
+- .cache/source/MegaCrit.Sts2.Core.Nodes.Cards/NCardGrid.cs 与 .cache/source/MegaCrit.Sts2.Core.Nodes.Cards.Holders/NGridCardHolder.cs 通过克隆候选 CardModel 并调用 UpgradeInternal() 生成预览；.cache/source/MegaCrit.Sts2.Core.Nodes.Cards/NCard.cs 的 ShowUpgradePreview() 调用 CardModel.GetDescriptionForUpgradePreview()，费用、卡名、动态描述和 HoverTips 来自克隆后的原版模型。网页快照也只克隆并升级副本；不改动牌组中的卡对象，确认后仍由原版铁匠回调升级。
+
+
+## 本机原版真理石板升级结果依据
+
+- `.cache/source/MegaCrit.Sts2.Core.Models.Events/TabletOfTruth.cs` 的 `LoseMaxHpAndUpgrade()` 从玩家当前牌组筛出 `IsUpgradable` 卡牌；前四次解读由事件自身 `Rng.NextItem(list)` 各随机取一张并调用原版 `CardCmd.Upgrade()`；第五次遍历当时仍可升级的牌逐张调用同一 API。随机结果由原版事件 RNG 与牌组决定，网页不重新抽选。
+- `.cache/source/MegaCrit.Sts2.Core.Commands/CardCmd.cs` 的 `Upgrade()` 在升级牌实际位于牌组时，将该卡的 `ModelId` 追加到当前 `PlayerMapPointHistoryEntry.UpgradedCards`，再调用 `UpgradeInternal()` / `FinalizeUpgradeInternal()`。原版 `.cache/source/MegaCrit.Sts2.Core.Nodes.HoverTips/NMapPointHistoryHoverTip.cs` 也使用这份历史列出升级卡牌名称。
+- `runtime/Main.cs` 在事件选项由原版执行并结算后，按 `UpgradedCards` 游标读取新增记录，通过原版 `ModelDb` 标题发出“升级了 卡名”；网页沿用事件结果区域展示。它只显示原版历史确认的牌名，不显示推测的升级内容，也不表示升级调用路径或事件 UI 完整 1:1。

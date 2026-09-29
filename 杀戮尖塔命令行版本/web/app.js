@@ -8,6 +8,7 @@
   const submit = $("#submit");
   const prompt = $("#prompt");
   const working = $("#working");
+  const promptLine = $(".prompt-line");
   const intentDialog = $("#intent-dialog");
   const intentDialogTitle = $("#intent-dialog-title");
   const intentDialogContent = $("#intent-dialog-content");
@@ -15,6 +16,13 @@
   const cardPreviewTitle = $("#card-preview-title");
   const cardPreviewBody = $("#card-preview-body");
   const cardPreviewActions = $("#card-preview-actions");
+  const keywordTooltip = $("#keyword-tooltip");
+  const keywordTooltipTitle = $("#keyword-tooltip-title");
+  const keywordTooltipDescription = $("#keyword-tooltip-description");
+  const deckDialog = $("#deck-dialog");
+  const deckDialogTitle = $("#deck-dialog-title");
+  const deckCardList = $("#deck-card-list");
+  const deckCardDetail = $("#deck-card-detail");
   const runControls = $("#run-controls");
   const runAbandonButton = $("#run-abandon");
   const runAbandonDialog = $("#run-abandon-dialog");
@@ -28,6 +36,8 @@
   const commandHistoryCount = $("#command-history-count");
   const welcome = $("#welcome");
   const encounter = $("#encounter");
+  const main = $("main");
+  const inspector = $(".inspector");
   const mapView = $("#map-view");
   const mapCanvas = $(".map-canvas");
   const mapSvg = $("#map-svg");
@@ -68,6 +78,22 @@
   let characterParentView = "landing";
   let selectedCharacterId = "ironclad";
   let timelineAutoKey = "";
+  let timelineAutoFocusEpochId = "";
+  let selectedTimelineEpochId = "";
+  let compendiumSectionId = "";
+  let compendiumSelectedId = "";
+  let compendiumSearch = "";
+  let compendiumPool = "全部";
+  let compendiumType = "全部";
+  let compendiumRarity = "全部";
+  let deckSelectedIndex = 0;
+  let hoveredKeyword = null;
+  let focusedKeyword = null;
+  let activeKeywordTarget = null;
+  let keywordTooltipOpen = false;
+  let compendiumSort = "原版顺序";
+  let compendiumShowStats = false;
+  let compendiumComposing = false;
   let retryCount = 0;
   let retryTimer = 0;
   let history = readHistory();
@@ -93,12 +119,15 @@
   let mapFocusFrame = 0;
   let selectionDraftKey = "";
   let selectionDraftIndices = new Set();
+  let upgradePreviewEnabled = false;
+  let upgradePreviewContext = null;
   let eventResultContext = "";
   let eventResults = [];
   // A targeted card is selected locally until the player chooses the target.
   // The engine remains authoritative: the eventual `play` command is still
   // validated by the original card target rules in the bridge.
   let targetingCard = null;
+  let targetingPotion = null;
 
   function readHistory() {
     try {
@@ -198,6 +227,22 @@
     const showMenu = !s.player || ended;
     welcome.hidden = !showMenu;
     if (!showMenu) return;
+    const restoreSearchFocus = welcome.contains(document.activeElement)
+      && document.activeElement.matches("input[data-compendium-search]");
+    const searchSelection = restoreSearchFocus ? {
+      start: document.activeElement.selectionStart,
+      end: document.activeElement.selectionEnd,
+      direction: document.activeElement.selectionDirection
+    } : null;
+    const activeCompendiumFilter = welcome.contains(document.activeElement)
+      ? document.activeElement.closest("select[data-compendium-filter]") : null;
+    const restoreCompendiumFilter = activeCompendiumFilter ? activeCompendiumFilter.dataset.compendiumFilter : "";
+    const activeCompendiumEntry = welcome.contains(document.activeElement)
+      ? document.activeElement.closest("[data-compendium-id]") : null;
+    const restoreCompendiumEntry = activeCompendiumEntry ? {
+      id: activeCompendiumEntry.dataset.compendiumId,
+      kind: activeCompendiumEntry.dataset.compendiumKind
+    } : null;
     const characters = Array.isArray(s.characters) ? s.characters : [];
     if (!characters.some((character) => character.id === selectedCharacterId)) selectedCharacterId = "ironclad";
     welcome.replaceChildren();
@@ -206,9 +251,13 @@
     const labels = s.mainMenuLabels || {};
     const modes = s.modeOptions || {};
     const abandonConfirmation = s.abandonConfirmation || {};
+    const compendium = s.compendiumData || {};
+    const selectedCompendiumSection = (compendium.sections || []).find((item) => item.id === compendiumSectionId);
     const title = startMenuView === "confirm-abandon"
       ? (abandonConfirmation.header || "你确定吗？")
-      : startMenuView === "timeline" ? (labels.timeline || "时间线") : "";
+      : startMenuView === "timeline" ? (labels.timeline || "时间线")
+      : startMenuView === "compendium" ? (labels.compendium || "百科大全")
+      : startMenuView === "compendium-section" ? value(selectedCompendiumSection && selectedCompendiumSection.title, labels.compendium || "百科大全") : "";
     if (title) {
       const heading = el("div", "start-menu-heading");
       heading.append(el("h2", "", startMenuView === "confirm-abandon" && ended ? "旅程已结束" : title));
@@ -233,7 +282,7 @@
       nav.append(menuEntry(labels.multiplayer || "多人模式", "unavailable", {disabled:true}));
       if (mainMenu.timelineVisible) nav.append(menuEntry(labels.timeline || "时间线", "timeline", {disabled:mainMenu.timelineEnabled !== true}));
       nav.append(menuEntry(labels.settings || "设置", "unavailable", {disabled:true}));
-      if (mainMenu.compendiumVisible) nav.append(menuEntry(labels.compendium || "百科大全", "unavailable", {disabled:true}));
+      if (mainMenu.compendiumVisible) nav.append(menuEntry(labels.compendium || "百科大全", "compendium", {disabled:mainMenu.compendiumEnabled === false}));
       nav.append(menuEntry(labels.quit || "退出", "unavailable", {disabled:true}));
       layout.append(nav);
       welcome.append(layout);
@@ -254,19 +303,11 @@
       }));
       welcome.append(modeGrid);
     } else if (startMenuView === "timeline") {
-      const top = el("div", "start-menu-subhead");
-      top.append(menuButton("返回", "back", "menu-button menu-back"));
-      welcome.append(top);
-      const epochs = Array.isArray(s.timelineCharacterUnlocks) ? s.timelineCharacterUnlocks : [];
-      const list = el("nav", "start-menu-nav timeline-unlock-list");
-      list.setAttribute("aria-label", labels.timeline || "时间线");
-      epochs.forEach((epoch) => {
-        const entry = menuEntry(value(epoch.title, "历史节点"), "reveal-epoch", {description:epoch.unlockInfo});
-        entry.dataset.epochId = value(epoch.id);
-        entry.append(el("span", "start-menu-entry-action", value(epoch.revealLabel, "解锁")));
-        list.append(entry);
-      });
-      if (epochs.length) welcome.append(list);
+      renderTimelinePage(s, labels);
+    } else if (startMenuView === "compendium") {
+      renderCompendiumMenu(s, labels);
+    } else if (startMenuView === "compendium-section") {
+      renderCompendiumSection(s, selectedCompendiumSection);
     } else if (startMenuView === "characters") {
       const top = el("div", "start-menu-subhead");
       top.append(menuButton("返回", "back", "menu-button menu-back"));
@@ -319,6 +360,337 @@
     }
     if (s.messageError && Array.isArray(s.messages) && s.messages.length)
       welcome.append(el("p", "menu-error", s.messages.join("\n")));
+    if (restoreSearchFocus) {
+      const search = welcome.querySelector("input[data-compendium-search]");
+      if (search) {
+        search.focus({preventScroll:true});
+        const start = Math.min(search.value.length, Number(searchSelection && searchSelection.start) || 0);
+        const end = Math.min(search.value.length, Number(searchSelection && searchSelection.end) || start);
+        search.setSelectionRange(start, end, searchSelection && searchSelection.direction || "none");
+      }
+    } else if (restoreCompendiumFilter) {
+      welcome.querySelector(`select[data-compendium-filter="${restoreCompendiumFilter}"]`)?.focus({preventScroll:true});
+    } else if (restoreCompendiumEntry) {
+      const entry = Array.from(welcome.querySelectorAll("[data-compendium-id]"))
+        .find((item) => item.dataset.compendiumId === restoreCompendiumEntry.id
+          && item.dataset.compendiumKind === restoreCompendiumEntry.kind);
+      entry?.focus({preventScroll:true});
+    }
+    if (startMenuView === "timeline" && timelineAutoFocusEpochId) {
+      const pending = Array.from(welcome.querySelectorAll("button[data-epoch-id]"))
+        .find((item) => item.dataset.epochId === timelineAutoFocusEpochId);
+      if (pending) {
+        pending.focus({preventScroll:true});
+        pending.scrollIntoView({block:"nearest",inline:"nearest"});
+        timelineAutoFocusEpochId = "";
+      }
+    }
+  }
+  function renderTimelinePage(s, labels) {
+    const top = el("div", "start-menu-subhead timeline-subhead");
+    const timelinePending = Boolean(s.mainMenu && s.mainMenu.timelineCharacterUnlockPending);
+    const backButton = menuButton("返回", "back", "menu-button menu-back", timelinePending);
+    if (timelinePending) {
+      backButton.title = "请先揭示待解锁的历史节点";
+      backButton.setAttribute("aria-label", "揭示待解锁历史节点后才能返回");
+    }
+    top.append(backButton);
+    const groups = Array.isArray(s.timelineEpochs) ? s.timelineEpochs : [];
+    const nodes = groups.flatMap((group) => Array.isArray(group.nodes) ? group.nodes : []);
+    const timelineRowCount = Math.max(1, ...nodes.map((node) => Math.max(0, Number(node.eraPosition) || 0) + 1));
+    const selected = nodes.find((node) => node.id === selectedTimelineEpochId && node.state === "revealed");
+    const page = el("section", "timeline-page");
+    const board = el("div", "timeline-board");
+    board.setAttribute("aria-label", labels.timeline || "时间线");
+    board.style.setProperty("--timeline-row-count", String(timelineRowCount));
+    for (const group of groups) {
+      const era = el("section", "timeline-era");
+      const eraHeading = el("header", "timeline-era-heading");
+      const eraName = value(group.era).trim();
+      const eraYear = value(group.year).trim();
+      if (eraName) eraHeading.append(el("strong", "", eraName));
+      if (eraYear) eraHeading.append(el("span", "", eraYear));
+      if (!eraName && !eraYear) {
+        eraHeading.classList.add("is-unlabeled");
+        eraHeading.setAttribute("aria-hidden", "true");
+      }
+      era.append(eraHeading);
+      const slots = el("div", "timeline-era-slots");
+      for (const node of (group.nodes || [])) {
+        const revealed = node.state === "revealed";
+        const canReveal = node.state === "obtained" && node.canReveal;
+        const button = el("button", "timeline-node is-" + value(node.state, "locked") + (node.id === selectedTimelineEpochId ? " is-selected" : ""));
+        button.type = "button";
+        button.disabled = !connected || submitting;
+        button.dataset.timelineNodeId = value(node.id);
+        button.style.gridRow = String(Math.max(0, Number(node.eraPosition) || 0) + 1);
+        if (canReveal) {
+          button.dataset.menuAction = "reveal-epoch";
+          button.dataset.epochId = value(node.id);
+        } else if (revealed) {
+          button.dataset.timelineEpoch = value(node.id);
+        }
+        button.append(el("span", "timeline-node-position", String(node.eraPosition).padStart(2, "0")));
+        button.append(el("strong", "timeline-node-title", value(node.title, "···")));
+        button.append(el("span", "timeline-node-state", value(node.stateLabel)));
+        if (node.hoverTitle || node.unlockInfo)
+          button.title = [node.hoverTitle, node.unlockInfo].filter(Boolean).join("\n");
+        slots.append(button);
+      }
+      era.append(slots);
+      board.append(era);
+    }
+    const axis = el("div", "timeline-axis");
+    axis.setAttribute("aria-hidden", "true");
+    for (let index = 0; index < groups.length; index++) {
+      const marker = el("span", "timeline-axis-marker");
+      axis.append(marker);
+    }
+    board.append(axis);
+    page.append(board);
+    if (selected) {
+      const detail = el("article", "timeline-detail");
+      if (selected.storyTitle) detail.append(el("div", "timeline-detail-story", selected.storyTitle));
+      detail.append(el("h3", "", selected.title));
+      if (selected.chapterIndex) detail.append(el("div", "timeline-detail-chapter", "第 " + selected.chapterIndex + " 章"));
+      if (selected.description) detail.append(el("p", "timeline-detail-description", selected.description));
+      if (selected.unlockText) detail.append(el("p", "timeline-detail-unlock", selected.unlockText));
+      page.append(detail);
+    }
+    welcome.append(top, page);
+    window.requestAnimationFrame(() => layoutTimelineAxis(board));
+    return document.createDocumentFragment();
+  }
+  function layoutTimelineAxis(board) {
+    if (!board || !board.isConnected) return;
+    const axis = board.querySelector(".timeline-axis");
+    if (!axis) return;
+    const eras = Array.from(board.querySelectorAll(".timeline-era"));
+    const slotRects = Array.from(board.querySelectorAll(".timeline-era-slots"), (slots) => slots.getBoundingClientRect());
+    if (!eras.length || !slotRects.length) return;
+    const boardRect = board.getBoundingClientRect();
+    const lastSlotBottom = Math.max(...slotRects.map((rect) => rect.bottom));
+    axis.style.left = "0px";
+    axis.style.top = `${lastSlotBottom - boardRect.top + board.scrollTop + 27}px`;
+    axis.style.width = `${Math.max(board.clientWidth, board.scrollWidth)}px`;
+    const markers = Array.from(axis.querySelectorAll(".timeline-axis-marker"));
+    eras.forEach((era, index) => {
+      const rect = era.getBoundingClientRect();
+      if (markers[index]) markers[index].style.left = `${rect.left - boardRect.left + board.scrollLeft + rect.width / 2}px`;
+    });
+  }
+  window.addEventListener("resize", () => {
+    const board = welcome.querySelector(".timeline-board");
+    if (board) layoutTimelineAxis(board);
+  });
+  function renderCompendiumMenu(s, labels) {
+    const top = el("div", "start-menu-subhead");
+    top.append(menuButton("返回", "back", "menu-button menu-back"));
+    const data = s.compendiumData || {};
+    const sections = (Array.isArray(data.sections) ? data.sections : []).filter((section) => section.visible);
+    const page = el("section", "compendium-menu-page");
+    const main = el("nav", "compendium-menu-grid");
+    main.setAttribute("aria-label", labels.compendium || "百科大全");
+    for (const section of sections) {
+      const button = el("button", "compendium-menu-entry");
+      button.type = "button";
+      button.dataset.compendiumSection = value(section.id);
+      button.append(el("strong", "", value(section.title)));
+      if (section.description) button.append(el("span", "", value(section.description)));
+      main.append(button);
+    }
+    page.append(main);
+    welcome.append(top, page);
+    return document.createDocumentFragment();
+  }
+  function compendiumPoolLabel(pool) {
+    const key = String(pool || "").toLowerCase();
+    return ({ironclad:"铁甲战士",silent:"静默猎手",regent:"储君",necrobinder:"亡灵契约者",defect:"故障机器人",colorless:"无色",ancient:"先古之民"})[key]
+      || (key === "event" || key === "status" || key === "curse" || key === "token" || key === "quest" ? "其他" : value(pool, "其他"));
+  }
+  function makeCompendiumSearch() {
+    const inputField = document.createElement("input");
+    inputField.type = "search";
+    inputField.className = "compendium-search";
+    inputField.dataset.compendiumSearch = "true";
+    inputField.value = compendiumSearch;
+    inputField.placeholder = "搜索";
+    inputField.setAttribute("aria-label", "搜索条目");
+    return inputField;
+  }
+  function makeCompendiumSelect(filter, current, values, label) {
+    const select = document.createElement("select");
+    select.className = "compendium-filter";
+    select.dataset.compendiumFilter = filter;
+    select.setAttribute("aria-label", label);
+    for (const item of values) {
+      const option = document.createElement("option");
+      option.value = item;
+      option.textContent = item;
+      option.selected = item === current;
+      select.append(option);
+    }
+    return select;
+  }
+  function renderCompendiumSection(s, section) {
+    const top = el("div", "start-menu-subhead");
+    const back = menuButton("返回", "compendium-back", "menu-button menu-back");
+    top.append(back);
+    const data = s.compendiumData || {};
+    const page = el("section", "compendium-section-page");
+    if (!section || !data) {
+      page.append(el("p", "muted", ""));
+      welcome.append(top, page);
+      return document.createDocumentFragment();
+    }
+    if (["cards", "relics", "potions", "bestiary"].includes(section.id)) {
+      page.append(renderCompendiumCatalog(data, section.id));
+    } else if (section.id === "stats") {
+      page.append(renderCompendiumStatistics(data.statistics));
+    } else if (section.id === "history") {
+      page.append(renderCompendiumHistory(data.history));
+    }
+    welcome.append(top, page);
+    return document.createDocumentFragment();
+  }
+  function renderCompendiumCatalog(data, kind) {
+    const catalog = Array.isArray(data[kind]) ? data[kind] : [];
+    const controls = el("div", "compendium-controls");
+    controls.append(makeCompendiumSearch());
+    if (kind === "cards") {
+      const pools = ["全部", ...new Set(catalog.map((item) => compendiumPoolLabel(item.pool)))];
+      const types = ["全部", ...new Set(catalog.map((item) => value(item.type)).filter(Boolean))];
+      const rarities = ["全部", ...new Set(catalog.map((item) => value(item.rarity)).filter(Boolean))];
+      controls.append(makeCompendiumSelect("pool", compendiumPool, pools, "按角色筛选"));
+      controls.append(makeCompendiumSelect("type", compendiumType, types, "按类型筛选"));
+      controls.append(makeCompendiumSelect("rarity", compendiumRarity, rarities, "按稀有度筛选"));
+      controls.append(makeCompendiumSelect("sort", compendiumSort, ["原版顺序", "名称", "类型", "稀有度", "费用"], "排序"));
+      const toggle = el("button", "compendium-stats-toggle" + (compendiumShowStats ? " is-active" : ""), compendiumShowStats ? "隐藏数据" : "显示数据");
+      toggle.type = "button";
+      toggle.dataset.compendiumStats = "toggle";
+      controls.append(toggle);
+    }
+    const query = compendiumSearch.trim().toLocaleLowerCase();
+    let filtered = catalog.filter((item) => {
+      const searchText = [item.title, item.id, item.description, item.act, item.encounter].join(" ").toLocaleLowerCase();
+      if (query && !searchText.includes(query)) return false;
+      if (kind === "cards") {
+        if (compendiumPool !== "全部" && compendiumPool !== compendiumPoolLabel(item.pool)) return false;
+        if (compendiumType !== "全部" && compendiumType !== item.type) return false;
+        if (compendiumRarity !== "全部" && compendiumRarity !== item.rarity) return false;
+      }
+      return true;
+    });
+    if (kind === "cards" && compendiumSort !== "原版顺序") {
+      const key = compendiumSort === "名称" ? "title" : compendiumSort === "类型" ? "type" : compendiumSort === "稀有度" ? "rarity" : "cost";
+      filtered = filtered.slice().sort((a, b) => String(a[key] || "").localeCompare(String(b[key] || ""), "zh-CN", {numeric:true}));
+    } else if (kind === "relics" || kind === "potions") {
+      const order = kind === "relics" ? ["Starter", "Common", "Uncommon", "Rare", "Shop", "Ancient", "Event"] : ["Common", "Uncommon", "Rare", "Event", "Token"];
+      filtered = filtered.slice().sort((a, b) => order.indexOf(a.rarity) - order.indexOf(b.rarity) || String(a.id).localeCompare(String(b.id)));
+    }
+    const layout = el("div", "compendium-browser");
+    const list = el("div", "compendium-list");
+    list.setAttribute("aria-label", "百科条目");
+    list.append(el("div", "compendium-list-count", filtered.length + " / " + catalog.length));
+    const detail = el("article", "compendium-detail");
+    let currentGroup = "";
+    const selected = filtered.find((item) => item.id === compendiumSelectedId)
+      || filtered.find((item) => kind === "cards" ? item.visibility === "visible" : item.visibility === "visible")
+      || filtered[0];
+    if (selected) compendiumSelectedId = selected.id;
+    filtered.forEach((item, index) => {
+      const groupKey = kind === "bestiary" ? item.act : kind === "cards" ? "" : item.group || "";
+      if (groupKey && groupKey !== currentGroup) {
+        list.append(el("h3", "compendium-group-heading", groupKey));
+        currentGroup = groupKey;
+      }
+      const row = el("button", "compendium-list-entry" + (item.visibility === "locked" ? " is-locked" : item.visibility === "unknown" ? " is-unknown" : "") + (item.id === compendiumSelectedId ? " is-selected" : ""));
+      row.type = "button";
+      row.dataset.compendiumId = value(item.id);
+      row.dataset.compendiumKind = kind;
+      row.disabled = kind === "cards" && item.visibility !== "visible" || item.visibility === "locked" || item.visibility === "unknown" && kind === "bestiary";
+      row.append(el("span", "compendium-entry-index", String(index + 1).padStart(2, "0")));
+      const copy = el("span", "compendium-entry-copy");
+      copy.append(el("strong", "", value(item.title, "未知")));
+      if (kind === "cards") copy.append(el("span", "compendium-entry-subtitle", [item.type, item.rarity].filter(Boolean).join(" · ")));
+      else if (kind === "bestiary") copy.append(el("span", "compendium-entry-subtitle", value(item.encounter)));
+      else copy.append(el("span", "compendium-entry-subtitle", value(item.rarity)));
+      row.append(copy);
+      if (kind === "cards" && item.cost !== undefined) row.append(el("span", "compendium-entry-cost", value(item.cost)));
+      list.append(row);
+    });
+    if (selected) {
+      detail.append(el("div", "compendium-detail-meta", kind === "cards" ? compendiumPoolLabel(selected.pool) : kind === "bestiary" ? value(selected.act) : value(selected.group)));
+      detail.append(el("h3", "", value(selected.title, "未知")));
+      if (kind === "cards") {
+        detail.append(el("div", "compendium-detail-meta", [selected.type, selected.rarity, selected.cost === undefined ? "" : selected.cost + " 能量"].filter(Boolean).join("　·　")));
+        detail.append(el("p", "compendium-detail-description", value(selected.description)));
+        if (compendiumShowStats) detail.append(el("div", "compendium-detail-stats", `拾取 ${selected.picked}　·　跳过 ${selected.skipped}　·　胜局 ${selected.won}　·　败局 ${selected.lost}`));
+      } else if (kind === "relics") {
+        detail.append(el("p", "compendium-detail-description", value(selected.description)));
+        if (selected.flavor) detail.append(el("p", "compendium-detail-flavor", selected.flavor));
+      } else if (kind === "potions") {
+        detail.append(el("p", "compendium-detail-description", value(selected.description)));
+      } else if (kind === "bestiary") {
+        if (selected.encounter) detail.append(el("div", "compendium-detail-meta", selected.encounter + "　·　" + value(selected.roomType)));
+        if (selected.description) detail.append(el("p", "compendium-detail-description", selected.description));
+        if (Array.isArray(selected.moves) && selected.moves.length) {
+          const moves = el("div", "bestiary-moves");
+          moves.append(el("h4", "", "行动"));
+          for (const move of selected.moves) moves.append(el("div", "bestiary-move", move));
+          detail.append(moves);
+        }
+        if (selected.wins) detail.append(el("div", "compendium-detail-stats", "击败次数 " + selected.wins));
+      }
+    }
+    layout.append(controls, list, detail);
+    return layout;
+  }
+  function renderCompendiumStatistics(statistics) {
+    const page = el("div", "compendium-statistics");
+    if (!statistics) return page;
+    page.append(el("h3", "compendium-subsection-title", "总体数据"));
+    const overall = el("div", "compendium-stat-lines");
+    for (const line of (statistics.overall || [])) overall.append(el("div", "compendium-stat-line", line));
+    page.append(overall);
+    if (Array.isArray(statistics.characters) && statistics.characters.length) {
+      page.append(el("h3", "compendium-subsection-title", "角色数据"));
+      const grid = el("div", "compendium-character-stats");
+      for (const character of statistics.characters) {
+        const entry = el("section", "compendium-character-stat");
+        entry.append(el("h4", "", value(character.title)));
+        for (const line of (character.lines || [])) entry.append(el("div", "compendium-stat-line", line));
+        grid.append(entry);
+      }
+      page.append(grid);
+    }
+    return page;
+  }
+  function renderCompendiumHistory(history) {
+    const rows = Array.isArray(history) ? history : [];
+    const page = el("div", "compendium-history");
+    if (!rows.length) return page;
+    const selected = rows.find((row) => row.id === compendiumSelectedId) || rows[0];
+    compendiumSelectedId = selected.id;
+    const list = el("nav", "compendium-history-list");
+    rows.forEach((row, index) => {
+      const button = el("button", "compendium-history-entry" + (row.id === selected.id ? " is-selected" : ""));
+      button.type = "button";
+      button.dataset.compendiumId = value(row.id);
+      button.dataset.compendiumKind = "history";
+      button.append(el("span", "compendium-entry-index", String(index + 1).padStart(2, "0")));
+      const copy = el("span", "compendium-entry-copy");
+      copy.append(el("strong", "", value(row.characters && row.characters.join("、"))), el("span", "compendium-entry-subtitle", value(row.date) + "　·　" + value(row.result)));
+      button.append(copy);
+      list.append(button);
+    });
+    const detail = el("article", "compendium-detail compendium-history-detail");
+    detail.append(el("div", "compendium-detail-meta", value(selected.result) + "　·　" + value(selected.duration)));
+    detail.append(el("h3", "", value(selected.characters && selected.characters.join("、"))));
+    detail.append(el("p", "compendium-detail-description", "進階 " + value(selected.ascension) + "　·　種子 " + value(selected.seed)));
+    detail.append(el("div", "compendium-detail-meta", value(selected.date) + "　·　" + value(selected.build)));
+    page.append(list, detail);
+    return page;
   }
   function cardTypeLabel(type) {
     return value(type).trim();
@@ -326,6 +698,10 @@
   function setPrompt(text, isError = false) {
     prompt.textContent = String(text || "");
     prompt.classList.toggle("prompt-error", Boolean(isError));
+    syncPromptLine();
+  }
+  function syncPromptLine() {
+    promptLine.hidden = !prompt.textContent && working.hidden;
   }
   function appendTextWithTooltips(element, text, tooltips) {
     const source = String(text || "");
@@ -349,11 +725,104 @@
       }
       if (nextIndex > cursor) element.append(document.createTextNode(source.slice(cursor, nextIndex)));
       const keyword = el("span", "card-keyword", nextTip.title);
-      keyword.title = nextTip.title + "：" + nextTip.description;
+      keyword.dataset.tooltipTitle = nextTip.title;
+      keyword.dataset.tooltipDescription = nextTip.description;
+      keyword.tabIndex = 0;
+      keyword.setAttribute("role", "term");
       keyword.setAttribute("aria-label", nextTip.title + "，" + nextTip.description);
       element.append(keyword);
       cursor = nextIndex + nextTip.title.length;
     }
+  }
+  function hideKeywordTooltip() {
+    if (activeKeywordTarget) activeKeywordTarget.removeAttribute("aria-describedby");
+    activeKeywordTarget = null;
+    keywordTooltip.dataset.visible = "false";
+    keywordTooltip.setAttribute("aria-hidden", "true");
+    if (keywordTooltipOpen && typeof keywordTooltip.hidePopover === "function") {
+      try { keywordTooltip.hidePopover(); } catch (_) { }
+    }
+    keywordTooltipOpen = false;
+  }
+  function positionKeywordTooltip() {
+    if (!activeKeywordTarget || !activeKeywordTarget.isConnected) return;
+    const anchor = activeKeywordTarget.getBoundingClientRect();
+    const popup = keywordTooltip.getBoundingClientRect();
+    if (!popup.width || !popup.height) return;
+    const margin = 12;
+    const left = Math.max(margin, Math.min(
+      anchor.left + anchor.width / 2 - popup.width / 2,
+      window.innerWidth - popup.width - margin
+    ));
+    let top = anchor.top - popup.height - 9;
+    if (top < margin) top = anchor.bottom + 9;
+    top = Math.max(margin, Math.min(top, window.innerHeight - popup.height - margin));
+    keywordTooltip.style.left = Math.round(left) + "px";
+    keywordTooltip.style.top = Math.round(top) + "px";
+  }
+  function syncKeywordTooltip() {
+    const target = hoveredKeyword && hoveredKeyword.isConnected ? hoveredKeyword
+      : focusedKeyword && focusedKeyword.isConnected ? focusedKeyword : null;
+    if (!target) {
+      hideKeywordTooltip();
+      return;
+    }
+    if (activeKeywordTarget !== target) {
+      if (activeKeywordTarget) activeKeywordTarget.removeAttribute("aria-describedby");
+      activeKeywordTarget = target;
+      keywordTooltipTitle.textContent = target.dataset.tooltipTitle || "";
+      keywordTooltipDescription.textContent = target.dataset.tooltipDescription || "";
+      target.setAttribute("aria-describedby", "keyword-tooltip");
+    }
+    keywordTooltip.dataset.visible = "true";
+    keywordTooltip.setAttribute("aria-hidden", "false");
+    if (!keywordTooltipOpen && typeof keywordTooltip.showPopover === "function") {
+      try {
+        keywordTooltip.showPopover();
+        keywordTooltipOpen = true;
+      } catch (_) {
+        keywordTooltipOpen = false;
+      }
+    }
+    requestAnimationFrame(positionKeywordTooltip);
+  }
+  function appendTextWithCardLinks(element, text, cards, optionIndex, linkMode = "event") {
+    const source = String(text || "");
+    const entries = (Array.isArray(cards) ? cards : [])
+      .map((card, index) => ({card,index,name:value(card && card.name).trim()}))
+      .filter((entry) => entry.name);
+    const linked = new Set();
+    let cursor = 0;
+    while (cursor < source.length) {
+      let nextIndex = -1;
+      let nextEntry = null;
+      entries.forEach((entry) => {
+        const index = source.indexOf(entry.name, cursor);
+        if (index >= 0 && (nextIndex < 0 || index < nextIndex || (index === nextIndex && entry.name.length > nextEntry.name.length))) {
+          nextIndex = index;
+          nextEntry = entry;
+        }
+      });
+      if (nextIndex < 0 || !nextEntry) {
+        element.append(document.createTextNode(source.slice(cursor)));
+        break;
+      }
+      if (nextIndex > cursor) element.append(document.createTextNode(source.slice(cursor, nextIndex)));
+      const link = el("button", "inline-card-link", nextEntry.name);
+      link.type = "button";
+      if (linkMode === "reward") {
+        link.dataset.cardPreviewIndex = String(optionIndex);
+      } else {
+        link.dataset.eventOptionIndex = String(optionIndex);
+        link.dataset.eventCardIndex = String(nextEntry.index);
+      }
+      link.title = "点击查看卡牌效果";
+      link.setAttribute("aria-label", "查看卡牌效果：" + nextEntry.name);
+      element.append(link);
+      linked.add(nextEntry.index);
+      cursor = nextIndex + nextEntry.name.length;
+    }
+    return linked;
   }
   function updateEventResults(s) {
     const isEventRoom = Boolean(s && s.eventState && typeof s.eventState === "object");
@@ -441,12 +910,22 @@
     const targetType = cardTargetType(card);
     return targetType === "AnyEnemy" || targetType === "AnyAlly";
   }
+  function potionTargetType(potion) {
+    return potion && typeof potion.targetType === "string" ? potion.targetType : "";
+  }
   function syncTargeting(s) {
-    if (!targetingCard) return;
-    const cards = Array.isArray(s && s.hand) ? s.hand : [];
-    if (s?.phase !== "combat" || !cards.some((card) => Number(card.index) === targetingCard.index)) {
-      targetingCard = null;
+    if (targetingCard) {
+      const cards = Array.isArray(s && s.hand) ? s.hand : [];
+      if (s?.phase !== "combat" || !cards.some((card) => Number(card.index) === targetingCard.index))
+        targetingCard = null;
     }
+    if (targetingPotion) {
+      const potions = Array.isArray(s && s.player && s.player.potions) ? s.player.potions : [];
+      const potion = potions.find((item) => Number(item && item.index) === targetingPotion.index);
+      if (s?.phase !== "combat" || !potion || potion.canUse !== true || potion.needsTarget !== true)
+        targetingPotion = null;
+    }
+    if (targetingCard && targetingPotion) targetingPotion = null;
   }
   function syncAllyTargetState(s) {
     const target = $("#character-status");
@@ -779,11 +1258,40 @@
     const mapped = point.matrixTransform(matrix.inverse());
     return {x:mapped.x,y:mapped.y};
   }
+  function nearestMapStroke(point, tolerancePx = 10) {
+    const matrix = mapSvg.getScreenCTM();
+    const scale = matrix ? Math.hypot(matrix.a, matrix.b) : 1;
+    const tolerance = tolerancePx / Math.max(scale, 0.001);
+    let nearestIndex = -1;
+    let nearestDistance = tolerance;
+    mapStrokes.forEach((stroke, strokeIndex) => {
+      for (let index = 1; index < stroke.length; index++) {
+        const start = stroke[index - 1];
+        const end = stroke[index];
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const lengthSquared = dx * dx + dy * dy;
+        const amount = lengthSquared
+          ? Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared))
+          : 0;
+        const x = start.x + amount * dx;
+        const y = start.y + amount * dy;
+        const distance = Math.hypot(point.x - x, point.y - y);
+        if (distance <= nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = strokeIndex;
+        }
+      }
+    });
+    return nearestIndex;
+  }
   function updateStatus(s) {
     updateRunControls(s);
     const player = s.player;
     $("#location").textContent = value(s.location, player ? "尖塔" : "尖塔入口");
     if (!player) {
+      inspector.hidden = true;
+      main.classList.add("no-player");
       $("#stage").textContent = "等待启程";
       $("#player-name").textContent = "铁甲战士";
       $("#player-class").textContent = "铁甲";
@@ -795,6 +1303,8 @@
       $("#potions").replaceChildren(el("span", "muted", "—"));
       return;
     }
+    inspector.hidden = false;
+    main.classList.remove("no-player");
     const parts = [];
     if (Number(s.act) > 0) {
       const actCount = Number(s.actCount) > 0 ? "/" + s.actCount : "";
@@ -835,15 +1345,36 @@
     status.append(stats);
     const piles = el("div", "piles");
     [["回合",player.turn],["卡组",player.deck],["抽牌",player.draw],["弃牌",player.discard],["消耗",player.exhaust]].forEach(([label,count]) => {
-      const metric = el("div", "pile-metric");
+      const deckMetric = label === "卡组";
+      const metric = el(deckMetric ? "button" : "div", "pile-metric" + (deckMetric ? " deck-pile-button" : ""));
+      if (deckMetric) {
+        metric.type = "button";
+        metric.dataset.openDeck = "true";
+        metric.title = "查看当前牌组";
+        metric.setAttribute("aria-label", "查看当前牌组，共 " + value(count, "0") + " 张");
+      }
       metric.append(el("span", "", label), el("strong", "", value(count, "—")));
       piles.append(metric);
     });
     status.append(piles);
-    const playerPowers = Array.isArray(player.powers) ? player.powers : [];
-    if (playerPowers.length) {
+    const playerPowerDetails = Array.isArray(player.powerDetails) ? player.powerDetails : [];
+    if (playerPowerDetails.length) {
       const powerList = el("div", "player-powers");
-      playerPowers.forEach((power) => powerList.append(el("div", "power-line", power)));
+      playerPowerDetails.forEach((power) => {
+        const type = power.type === "Debuff" ? "debuff" : power.type === "Buff" ? "buff" : "status";
+        const typeLabel = type === "debuff" ? "减益" : type === "buff" ? "增益" : "状态";
+        const row = el("div", "power-detail " + type);
+        row.append(el("strong", "power-name", typeLabel + " · " + value(power.name, "状态")));
+        const description = value(power.description);
+        if (description) row.append(el("span", "power-description", description));
+        else if (power.amount !== undefined && power.amount !== null)
+          row.append(el("span", "power-description", "数值 " + power.amount));
+        powerList.append(row);
+      });
+      status.append(powerList);
+    } else if (Array.isArray(player.powers) && player.powers.length) {
+      const powerList = el("div", "player-powers");
+      player.powers.forEach((power) => powerList.append(el("div", "power-line", power)));
       status.append(powerList);
     }
     $("#character-status").replaceChildren(status);
@@ -866,8 +1397,23 @@
     potionList.replaceChildren();
     if (!potions.length) potionList.append(el("span", "muted", "暂无药水槽信息"));
     potions.forEach((potion, index) => {
-      const row = el("div", "potion-line");
-      row.append(el("span", "potion-index", String(index + 1).padStart(2, "0")), el("span", "", value(potion, "空槽")));
+      const slot = Number(potion && potion.index) || index + 1;
+      const name = value(potion && potion.name, typeof potion === "string" ? potion : "空槽");
+      const description = value(potion && potion.description);
+      const needsTarget = Boolean(potion && potion.needsTarget);
+      const selectable = Boolean(potion && potion.canUse === true && needsTarget);
+      const selected = Boolean(targetingPotion && targetingPotion.index === slot);
+      const row = el("button", "potion-line" + (selected ? " is-targeting" : ""));
+      row.type = "button";
+      row.dataset.potionSlot = String(slot);
+      row.disabled = Boolean(!connected || submitting || s.busy || !potion || potion.canUse !== true);
+      row.append(el("span", "potion-index", String(slot).padStart(2, "0")));
+      const copy = el("span", "potion-copy");
+      copy.append(el("strong", "potion-name", name));
+      if (description) copy.append(el("small", "potion-description", description));
+      row.append(copy, el("span", "potion-action", selected ? "取消" : value(potion && potion.action, selectable ? "选择目标" : "")));
+      row.title = description ? name + "\n" + description : name;
+      row.setAttribute("aria-label", description ? name + "。" + description + "。" + value(potion && potion.action, "") : name);
       potionList.append(row);
     });
   }
@@ -904,14 +1450,18 @@
       enemies.forEach((enemy, enemyPosition) => {
       const enemyIndex = enemy && enemy.index !== undefined && enemy.index !== null
         ? String(enemy.index) : String(enemyPosition + 1);
-      const canTargetEnemy = Boolean(targetingCard && targetingCard.targetType === "AnyEnemy" && !s.busy && !submitting);
+      const canTargetEnemy = Boolean(
+        ((targetingCard && targetingCard.targetType === "AnyEnemy")
+          || (targetingPotion && targetingPotion.targetType === "AnyEnemy"))
+        && !s.busy && !submitting
+      );
       const unit = el("article", "enemy" + (canTargetEnemy ? " targetable" : ""));
       if (canTargetEnemy) {
         unit.dataset.targetIndex = enemyIndex;
         unit.setAttribute("role", "button");
         unit.setAttribute("tabindex", "0");
         unit.setAttribute("aria-label", "选择敌人 " + enemyIndex + "：" + value(enemy.name, "敌人"));
-        unit.title = "点击选择此敌人作为目标";
+        unit.title = targetingPotion ? "点击此敌人使用药水" : "点击选择此敌人作为目标";
       }
       const top = el("div", "enemy-top");
       const name = el("div", "enemy-name");
@@ -1036,6 +1586,7 @@
   }
   function openCardPreview(card, options = {}) {
     if (!card || typeof card !== "object") return;
+    cardPreviewDialog.classList.remove("upgrade-preview-dialog");
     cardPreviewTitle.textContent = value(card.name, "卡牌");
     cardPreviewBody.replaceChildren();
     cardPreviewActions.replaceChildren();
@@ -1060,13 +1611,115 @@
     cardPreviewActions.append(close);
     if (!cardPreviewDialog.open) cardPreviewDialog.showModal();
   }
+  function appendUpgradePreviewPane(parent, label, card) {
+    const pane = el("section", "upgrade-preview-pane");
+    pane.append(el("div", "upgrade-preview-label", label));
+    pane.append(el("h3", "", value(card && card.name, "卡牌")));
+    const meta = el("div", "card-preview-meta");
+    if (card && card.type) meta.append(el("span", "", cardTypeLabel(card.type)));
+    if (card && card.cost !== undefined && card.cost !== null) meta.append(el("span", "", card.cost + " 能量"));
+    if (meta.childElementCount) pane.append(meta);
+    const description = el("div", "card-preview-description");
+    appendTextWithTooltips(description, value(card && card.description), card && card.hoverTips);
+    pane.append(description);
+    parent.append(pane);
+  }
+  function openUpgradeComparison(options, command) {
+    const cards = (Array.isArray(options) ? options : [])
+      .filter((option) => option && option.upgradePreview);
+    if (!cards.length || !command) return;
+    upgradePreviewContext = {command, clearDraft: cards.length > 1};
+    cardPreviewDialog.classList.add("upgrade-preview-dialog");
+    cardPreviewTitle.textContent = cards.length === 1 ? "升级预览" : "升级效果预览";
+    cardPreviewBody.replaceChildren();
+    cardPreviewActions.replaceChildren();
+    const list = el("div", "upgrade-preview-list");
+    cards.forEach((card) => {
+      const comparison = el("section", "upgrade-preview-comparison");
+      if (cards.length > 1) comparison.append(el("h3", "upgrade-preview-card-name", value(card.name, "卡牌")));
+      const panes = el("div", "upgrade-preview-panes");
+      appendUpgradePreviewPane(panes, "升级前", card);
+      panes.append(el("span", "upgrade-preview-arrow", "→"));
+      appendUpgradePreviewPane(panes, "升级后", card.upgradePreview);
+      comparison.append(panes);
+      list.append(comparison);
+    });
+    cardPreviewBody.append(list);
+    const cancel = el("button", "choice-action", "取消");
+    cancel.type = "button";
+    cancel.dataset.upgradePreviewCancel = "true";
+    const confirm = el("button", "choice-action choice-confirm", "确认升级");
+    confirm.type = "button";
+    confirm.dataset.upgradePreviewConfirm = "true";
+    confirm.disabled = !connected || submitting || Boolean(state && state.busy);
+    cardPreviewActions.append(cancel, confirm);
+    if (!cardPreviewDialog.open) cardPreviewDialog.showModal();
+  }
+  function cancelUpgradeComparison() {
+    const context = upgradePreviewContext;
+    upgradePreviewContext = null;
+    if (cardPreviewDialog.open) cardPreviewDialog.close();
+    if (context && context.clearDraft) {
+      selectionDraftIndices.clear();
+      if (state) renderChoices(state);
+    }
+  }
+  function confirmUpgradeComparison() {
+    const context = upgradePreviewContext;
+    upgradePreviewContext = null;
+    if (cardPreviewDialog.open) cardPreviewDialog.close();
+    if (context && context.command) send(context.command);
+  }
+  function renderDeckDialog(s) {
+    const cards = Array.isArray(s && s.player && s.player.deckCards) ? s.player.deckCards : [];
+    deckDialogTitle.textContent = "当前牌组 · " + cards.length + " 张";
+    deckCardList.replaceChildren();
+    deckCardDetail.replaceChildren();
+    if (!cards.length) {
+      deckCardList.append(el("div", "deck-empty", "牌组为空"));
+      return;
+    }
+    deckSelectedIndex = Math.max(0, Math.min(deckSelectedIndex, cards.length - 1));
+    cards.forEach((card, index) => {
+      const selected = index === deckSelectedIndex;
+      const button = el("button", "deck-card-item" + (selected ? " selected" : ""));
+      button.type = "button";
+      button.dataset.deckCardIndex = String(index);
+      button.setAttribute("aria-pressed", String(selected));
+      button.append(
+        el("span", "deck-card-number", String(index + 1).padStart(2, "0")),
+        el("span", "deck-card-name", value(card.name, "卡牌")),
+        el("span", "deck-card-type", card.type ? cardTypeLabel(card.type) : "")
+      );
+      deckCardList.append(button);
+    });
+    const card = cards[deckSelectedIndex];
+    const heading = el("div", "deck-detail-heading");
+    heading.append(el("span", "eyebrow", "牌组卡牌"), el("h3", "", value(card.name, "卡牌")));
+    deckCardDetail.append(heading);
+    const meta = el("div", "card-preview-meta");
+    if (card.type) meta.append(el("span", "", cardTypeLabel(card.type)));
+    if (card.cost !== undefined && card.cost !== null) meta.append(el("span", "", card.cost + " 能量"));
+    if (meta.childElementCount) deckCardDetail.append(meta);
+    const description = el("div", "card-preview-description");
+    appendTextWithTooltips(description, value(card.description), card.hoverTips);
+    deckCardDetail.append(description);
+  }
+  function showDeckDialog() {
+    if (!state || !state.player) return;
+    deckSelectedIndex = 0;
+    renderDeckDialog(state);
+    if (!deckDialog.open) deckDialog.showModal();
+  }
   function renderHand(s) {
     hand.replaceChildren();
     const cards = Array.isArray(s.hand) ? s.hand : [];
     const combatTurn = s.phase === "combat";
     hand.hidden = cards.length === 0 && !combatTurn;
     if (hand.hidden) return;
-    const handHint = targetingCard
+    const handHint = targetingPotion
+      ? "点击敌人使用药水 · 再点药水可取消"
+      : targetingCard
       ? (targetingCard.targetType === "AnyAlly" ? "点击战士选择目标" : "点击敌人选择目标")
       : combatTurn ? (cards.length ? "点击卡牌出牌" : "暂无手牌") : "play 手牌编号";
     const toolbar = el("div", "hand-toolbar");
@@ -1184,7 +1837,9 @@
     if (nextSelectionKey !== selectionDraftKey) {
       selectionDraftKey = nextSelectionKey;
       selectionDraftIndices = new Set();
+      upgradePreviewEnabled = false;
     }
+    const isUpgradeSelection = options.some((option) => option && option.upgradePreview);
     const eventText = value(s.eventText).trim();
     const eventDialogue = s.eventDialogue && typeof s.eventDialogue === "object" ? s.eventDialogue : null;
     const eventCardResults = Array.isArray(s.eventCardResults) ? s.eventCardResults : [];
@@ -1197,6 +1852,15 @@
         : (s.phase === "Treasure" || s.phase === "TreasureRoom") ? "宝箱"
         : (s.phase === "Shop" || s.phase === "MerchantRoom") ? "商店商品" : "当前选项";
       choice.append(sectionHeading(optionHeading, value(s.prompt)));
+      if (isUpgradeSelection) {
+        const previewToolbar = el("div", "upgrade-preview-toolbar");
+        const previewToggle = el("button", "choice-action upgrade-preview-toggle", "查看升级");
+        previewToggle.type = "button";
+        previewToggle.dataset.toggleUpgradePreview = "true";
+        previewToggle.setAttribute("aria-pressed", String(upgradePreviewEnabled));
+        previewToolbar.append(previewToggle);
+        choice.append(previewToolbar);
+      }
       if (eventText) choice.append(el("div", "event-text", eventText));
       if (eventDialogue) {
         const conversation = el("div", "architect-conversation");
@@ -1206,14 +1870,25 @@
       }
       const list = el("div", "option-list");
       options.forEach((option, index) => {
+        const displayOption = upgradePreviewEnabled && option.upgradePreview
+          ? {...option,...option.upgradePreview} : option;
         const specialCardReward = (option.kind === "specialCard" || option.kind === "stolenCard")
           && option.cardPreview && typeof option.cardPreview === "object";
-        const actionable = Boolean(option.command) && !specialCardReward;
-        const rowClass = "option" + (option.disabled ? " disabled" : "") + (specialCardReward ? " special-card-reward" : "");
+        const eventCardPreviews = Array.isArray(option.cardPreviews)
+          ? option.cardPreviews.filter((card) => card && typeof card === "object") : [];
+        const inlineCardPreviews = eventCardPreviews.length ? eventCardPreviews
+          : specialCardReward ? [option.cardPreview] : [];
+        const inlineLinkMode = specialCardReward ? "reward" : "event";
+        const actionable = Boolean(option.command) && !specialCardReward && !eventCardPreviews.length;
+        const rowClass = "option" + (option.disabled ? " disabled" : "")
+          + (specialCardReward ? " special-card-reward" : "")
+          + (eventCardPreviews.length ? " event-card-option" : "");
         const row = el(actionable ? "button" : "div", rowClass);
         if (actionable) {
           row.type = "button";
           row.dataset.command = option.command;
+          if (option.upgradePreview && selection && Number(selection.max) === 1)
+            row.dataset.upgradeChoiceIndex = String(option.index || index + 1);
           row.disabled = Boolean(option.disabled || s.busy || !connected || submitting);
           row.title = row.disabled ? value(option.type, "当前不可用") : "点击立即选择；也可在命令框手动输入 " + option.command;
           row.setAttribute("aria-label", "立即执行 " + option.command + "：" + value(option.name, "选项"));
@@ -1227,27 +1902,65 @@
             row.setAttribute("aria-label", (selected ? "取消待选卡牌 " : "添加待选卡牌 ") + optionIndex + "：" + value(option.name, "卡牌") + "；完成后点击确认选择");
             row.title = "点击添加或取消这张牌；选好后点击确认选择";
           }
+        } else if (eventCardPreviews.length && option.command) {
+          row.dataset.eventChoiceCommand = option.command;
+          row.tabIndex = option.disabled ? -1 : 0;
+          row.setAttribute("role", "group");
+          row.setAttribute("aria-disabled", String(Boolean(option.disabled)));
+          row.setAttribute("aria-label", "事件选项：" + value(option.name, "选项")
+            + (option.disabled ? "；当前不可用" : "；点击选项可选择，带下划线的卡名可查看牌面"));
         }
         row.append(el("span", "option-number", String(option.index || index + 1).padStart(2, "0")));
         const detail = el("div", "option-details");
         const title = el("div", "option-title-row");
-        title.append(el("span", "option-name", value(option.name, "选项")));
-        if (option.type) title.append(el("span", "option-type", cardTypeLabel(option.type)));
-        if (option.cost !== undefined && option.cost !== null) title.append(el("span", "option-cost", option.cost + " " + value(option.costLabel, "能量")));
+        const optionName = el("span", "option-name");
+        const linkedCardIndices = new Set();
+        if (inlineCardPreviews.length) {
+          appendTextWithCardLinks(optionName, value(option.name, "选项"), inlineCardPreviews, option.index || index + 1, inlineLinkMode)
+            .forEach((cardIndex) => linkedCardIndices.add(cardIndex));
+        } else {
+          optionName.textContent = value(displayOption.name, "选项");
+        }
+        title.append(optionName);
+        if (displayOption.type) title.append(el("span", "option-type", cardTypeLabel(displayOption.type)));
+        if (displayOption.cost !== undefined && displayOption.cost !== null) title.append(el("span", "option-cost", displayOption.cost + " " + value(displayOption.costLabel, "能量")));
         detail.append(title);
-        if (option.description) {
+        if (displayOption.description) {
           const description = el("span", "option-description");
-          appendTextWithTooltips(description, option.description, option.hoverTips);
+          if (inlineCardPreviews.length) {
+            appendTextWithCardLinks(description, displayOption.description, inlineCardPreviews, option.index || index + 1, inlineLinkMode)
+              .forEach((cardIndex) => linkedCardIndices.add(cardIndex));
+          } else {
+            appendTextWithTooltips(description, displayOption.description, displayOption.hoverTips);
+          }
           detail.append(description);
+        }
+        if (inlineCardPreviews.length) {
+          const missingCardNames = inlineCardPreviews
+            .map((card, cardIndex) => ({card,cardIndex}))
+            .filter((item) => !linkedCardIndices.has(item.cardIndex));
+          if (missingCardNames.length) {
+            const references = el("div", "option-card-references");
+            references.append(el("span", "option-card-reference-label", "卡牌："));
+            missingCardNames.forEach(({card,cardIndex}, referenceIndex) => {
+              if (referenceIndex) references.append(document.createTextNode("、"));
+              const link = el("button", "inline-card-link", value(card.name, "卡牌"));
+              link.type = "button";
+              if (inlineLinkMode === "reward") {
+                link.dataset.cardPreviewIndex = String(option.index || index + 1);
+              } else {
+                link.dataset.eventOptionIndex = String(option.index || index + 1);
+                link.dataset.eventCardIndex = String(cardIndex);
+              }
+              link.title = "点击查看卡牌效果";
+              link.setAttribute("aria-label", "查看卡牌效果：" + value(card.name, "卡牌"));
+              references.append(link);
+            });
+            detail.append(references);
+          }
         }
         if (specialCardReward) {
           const rewardActions = el("div", "special-reward-actions");
-          const previewButton = el("button", "choice-action", "查看牌面");
-          previewButton.type = "button";
-          previewButton.dataset.cardPreviewIndex = String(option.index || index + 1);
-          previewButton.disabled = Boolean(s.busy || submitting);
-          previewButton.title = "查看被偷卡牌的牌面，再决定是否取回";
-          rewardActions.append(previewButton);
           const takeButton = el("button", "choice-action choice-confirm", value(option.claimLabel, "领取"));
           takeButton.type = "button";
           takeButton.dataset.command = option.command;
@@ -1326,18 +2039,26 @@
   function applySnapshot(s) {
     validateSnapshot(s);
     const mapWasOpen = mapOpen;
+    const hadPreviousSnapshot = state !== null;
+    const timelineWasOpen = Boolean(state && state.mainMenu && state.mainMenu.timelineOpen);
     const crystalSphereWasVisible = Boolean(state && state.crystalSphere);
     s.eventCardResults = updateEventResults(s);
     const timelineUnlocks = Array.isArray(s.timelineCharacterUnlocks) ? s.timelineCharacterUnlocks : [];
-    const timelinePending = Boolean(s.mainMenu && s.mainMenu.timelineForced && timelineUnlocks.length);
+    const timelinePending = Boolean(s.mainMenu && s.mainMenu.timelineCharacterUnlockPending);
     const nextTimelineKey = timelinePending ? timelineUnlocks.map((epoch) => value(epoch.id)).join("|") : "";
     if (timelinePending && nextTimelineKey !== timelineAutoKey) {
-      startMenuView = "timeline";
       timelineAutoKey = nextTimelineKey;
+      timelineAutoFocusEpochId = value(timelineUnlocks[0] && timelineUnlocks[0].id);
     } else if (!timelinePending) {
       timelineAutoKey = "";
-      if (startMenuView === "timeline") startMenuView = "landing";
     }
+    if (hadPreviousSnapshot && s.mainMenu) {
+      if (s.mainMenu.timelineOpen && !timelineWasOpen)
+        startMenuView = "timeline";
+      else if (!s.mainMenu.timelineOpen && timelineWasOpen && startMenuView === "timeline")
+        startMenuView = "landing";
+    }
+    if (s.mainMenu && s.mainMenu.compendiumOpen) startMenuView = "compendium";
     state = s;
     if (crystalSphereWasVisible && !s.crystalSphere) scrollArea.scrollTop = 0;
     syncTargeting(s);
@@ -1348,6 +2069,7 @@
     const messages = Array.isArray(s.messages) ? s.messages.filter(Boolean) : [];
     setPrompt(s.messageError && messages.length ? messages.join("\n") : value(s.prompt, "输入 help 查看命令"), Boolean(s.messageError && messages.length));
     working.hidden = !submitting;
+    syncPromptLine();
     renderWelcome(s);
     syncMapVisibility(s);
     renderEncounter(s);
@@ -1356,6 +2078,7 @@
     renderChoices(s);
     renderRoutePreview(s);
     updateStatus(s);
+    syncKeywordTooltip();
     [encounter, hand, choice, routePreview, $("#character-status"), $("#relics"), $("#potions")].forEach(animateState);
     syncInput();
     if (!mapWasOpen && mapOpen) scheduleMapFocus(true);
@@ -1398,13 +2121,22 @@
       selectionDraftKey = "";
       selectionDraftIndices = new Set();
     }
+    const commandParts = command.trim().split(/\s+/);
+    let clearedTargeting = false;
     if (targetingCard && verb !== "play") {
       targetingCard = null;
-      if (state) {
-        renderEncounter(state);
-        renderHand(state);
-        updateStatus(state);
-      }
+      clearedTargeting = true;
+    }
+    if (targetingPotion && !(verb === "potion"
+      && Number(commandParts[1]) === targetingPotion.index
+      && commandParts.length === 3)) {
+      targetingPotion = null;
+      clearedTargeting = true;
+    }
+    if (clearedTargeting && state) {
+      renderEncounter(state);
+      renderHand(state);
+      updateStatus(state);
     }
     if (verb === "new" || verb === "continue") {
       startMenuView = "landing";
@@ -1419,6 +2151,7 @@
     input.value = "";
     submitting = true;
     working.hidden = false;
+    syncPromptLine();
     if (state) {
       renderMap(state);
       renderChoices(state);
@@ -1443,6 +2176,7 @@
         return;
       }
       if (verb === "play") targetingCard = null;
+      if (verb === "potion") targetingPotion = null;
       if (verb === "map") {
         mapOpen = true;
         mapSuppressedKey = "";
@@ -1487,6 +2221,7 @@
     } finally {
       submitting = false;
       working.hidden = true;
+      syncPromptLine();
       if (state) {
         renderWelcome(state);
         renderMap(state);
@@ -1597,18 +2332,19 @@
   });
   mapSvg.addEventListener("pointerdown", (event) => {
     if (mapTool === "erase") {
-      const path = event.target.closest && event.target.closest("[data-stroke-index]");
-      if (!path) return;
-      const index = Number(path.getAttribute("data-stroke-index"));
-      if (Number.isInteger(index) && index >= 0 && index < mapStrokes.length) {
-        mapStrokes.splice(index, 1);
-        saveMapStrokes();
-        renderMapInk();
-      }
+      if (event.target.closest && event.target.closest(".map-node[data-command]")) return;
+      const point = svgEventPoint(event);
+      if (!point) return;
+      const index = nearestMapStroke(point);
+      if (index < 0) return;
+      mapStrokes.splice(index, 1);
+      saveMapStrokes();
+      renderMapInk();
       event.preventDefault();
       return;
     }
     if (mapTool !== "draw" || (event.button !== undefined && event.button !== 0)) return;
+    if (event.target.closest && event.target.closest(".map-node[data-command]")) return;
     const point = svgEventPoint(event);
     if (!point) return;
     activeMapPointer = event.pointerId;
@@ -1640,7 +2376,6 @@
   mapSvg.addEventListener("pointerup", finishMapStroke);
   mapSvg.addEventListener("pointercancel", finishMapStroke);
   mapSvg.addEventListener("click", (event) => {
-    if (mapTool !== "none") return;
     const node = event.target.closest && event.target.closest(".map-node[data-command]");
     if (!node) return;
     const command = node.dataset.command;
@@ -1648,7 +2383,7 @@
     send(command);
   });
   mapSvg.addEventListener("keydown", (event) => {
-    if (mapTool !== "none" || (event.key !== "Enter" && event.key !== " ")) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
     const node = event.target.closest && event.target.closest(".map-node[data-command]");
     if (!node) return;
     event.preventDefault();
@@ -1661,6 +2396,7 @@
     const index = Number(cardIndex);
     const card = Array.isArray(state.hand) ? state.hand.find((item) => Number(item.index) === index) : null;
     if (!card) return;
+    targetingPotion = null;
     if (cardNeedsTarget(card)) {
       if (targetingCard && targetingCard.index === index) {
         targetingCard = null;
@@ -1676,11 +2412,39 @@
     send("play " + index);
   }
   function chooseEnemyTarget(targetIndex) {
-    if (!targetingCard || targetingCard.targetType !== "AnyEnemy" || !state || state.phase !== "combat" || state.busy || submitting) return;
+    if (!state || state.phase !== "combat" || state.busy || submitting) return;
     const index = Number(targetIndex);
     if (!Number.isInteger(index)) return;
-    send("play " + targetingCard.index + " " + index);
+    if (targetingCard && targetingCard.targetType === "AnyEnemy") {
+      send("play " + targetingCard.index + " " + index);
+      return;
+    }
+    if (targetingPotion && targetingPotion.targetType === "AnyEnemy")
+      send("potion " + targetingPotion.index + " " + index);
   }
+  $("#potions").addEventListener("click", (event) => {
+    const button = event.target.closest && event.target.closest("button[data-potion-slot]");
+    if (!button || !$("#potions").contains(button) || button.disabled || !state || !state.player) return;
+    const slot = Number(button.dataset.potionSlot);
+    const potion = (Array.isArray(state.player.potions) ? state.player.potions : [])
+      .find((item) => Number(item && item.index) === slot);
+    if (!potion || potion.canUse !== true) return;
+    if (potion.needsTarget) {
+      if (targetingPotion && targetingPotion.index === slot) {
+        targetingPotion = null;
+      } else {
+        targetingCard = null;
+        targetingPotion = {index:slot,targetType:potionTargetType(potion)};
+      }
+      renderEncounter(state);
+      renderHand(state);
+      updateStatus(state);
+      return;
+    }
+    targetingCard = null;
+    targetingPotion = null;
+    send("potion " + slot);
+  });
   hand.addEventListener("click", (event) => {
     const commandButton = event.target.closest && event.target.closest("button[data-command]");
     if (commandButton && hand.contains(commandButton)) {
@@ -1724,6 +2488,14 @@
   cardPreviewActions.addEventListener("click", (event) => {
     const button = event.target.closest && event.target.closest("button");
     if (!button || button.disabled || !cardPreviewActions.contains(button)) return;
+    if (button.dataset.upgradePreviewCancel === "true") {
+      cancelUpgradeComparison();
+      return;
+    }
+    if (button.dataset.upgradePreviewConfirm === "true") {
+      confirmUpgradeComparison();
+      return;
+    }
     if (button.dataset.cardPreviewClose === "true") {
       cardPreviewDialog.close();
       return;
@@ -1734,14 +2506,71 @@
       send(command);
     }
   });
-  $("#card-preview-close").addEventListener("click", () => cardPreviewDialog.close());
+  $("#card-preview-close").addEventListener("click", () => {
+    if (upgradePreviewContext) cancelUpgradeComparison();
+    else cardPreviewDialog.close();
+  });
   cardPreviewDialog.addEventListener("click", (event) => {
-    if (event.target === cardPreviewDialog) cardPreviewDialog.close();
+    if (event.target !== cardPreviewDialog) return;
+    if (upgradePreviewContext) cancelUpgradeComparison();
+    else cardPreviewDialog.close();
+  });
+  cardPreviewDialog.addEventListener("cancel", (event) => {
+    if (!upgradePreviewContext) return;
+    event.preventDefault();
+    cancelUpgradeComparison();
+  });
+  $("#deck-dialog-close").addEventListener("click", () => deckDialog.close());
+  deckDialog.addEventListener("click", (event) => {
+    if (event.target === deckDialog) {
+      deckDialog.close();
+      return;
+    }
+    const cardButton = event.target.closest && event.target.closest("button[data-deck-card-index]");
+    if (!cardButton || !deckCardList.contains(cardButton)) return;
+    const index = Number(cardButton.dataset.deckCardIndex);
+    if (!Number.isInteger(index)) return;
+    deckSelectedIndex = index;
+    renderDeckDialog(state);
+    deckCardList.querySelector(`button[data-deck-card-index="${index}"]`)?.focus();
   });
   $("#intent-dialog-close").addEventListener("click", () => intentDialog.close());
   intentDialog.addEventListener("click", (event) => {
     if (event.target === intentDialog) intentDialog.close();
   });
+  document.addEventListener("pointerover", (event) => {
+    const target = event.target.closest && event.target.closest(".card-keyword");
+    if (!target || target === hoveredKeyword) return;
+    const previous = event.relatedTarget && event.relatedTarget.closest
+      ? event.relatedTarget.closest(".card-keyword") : null;
+    if (previous === target) return;
+    hoveredKeyword = target;
+    syncKeywordTooltip();
+  });
+  document.addEventListener("pointerout", (event) => {
+    const target = event.target.closest && event.target.closest(".card-keyword");
+    if (!target || target !== hoveredKeyword) return;
+    const next = event.relatedTarget && event.relatedTarget.closest
+      ? event.relatedTarget.closest(".card-keyword") : null;
+    if (next === target) return;
+    hoveredKeyword = null;
+    syncKeywordTooltip();
+  });
+  document.addEventListener("focusin", (event) => {
+    const target = event.target.closest && event.target.closest(".card-keyword");
+    if (!target) return;
+    focusedKeyword = target;
+    hoveredKeyword = null;
+    syncKeywordTooltip();
+  });
+  document.addEventListener("focusout", (event) => {
+    const target = event.target.closest && event.target.closest(".card-keyword");
+    if (!target || target !== focusedKeyword) return;
+    focusedKeyword = null;
+    syncKeywordTooltip();
+  });
+  window.addEventListener("scroll", positionKeywordTooltip, true);
+  window.addEventListener("resize", positionKeywordTooltip);
   runAbandonButton.addEventListener("click", () => {
     if (!state || runAbandonButton.disabled || !state.runAbandon || !state.runAbandon.enabled) return;
     updateRunControls(state);
@@ -1758,6 +2587,11 @@
     send("abandon");
   });
   $("#character-status").addEventListener("click", (event) => {
+    const deckButton = event.target.closest && event.target.closest("button[data-open-deck]");
+    if (deckButton) {
+      showDeckDialog();
+      return;
+    }
     const target = event.target.closest && event.target.closest("#character-status[data-target-index]");
     if (!target || target !== $("#character-status")) return;
     if (targetingCard && targetingCard.targetType === "AnyAlly") {
@@ -1765,6 +2599,7 @@
     }
   });
   $("#character-status").addEventListener("keydown", (event) => {
+    if (event.target.closest && event.target.closest("button[data-open-deck]")) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     const target = event.target.closest && event.target.closest("#character-status[data-target-index]");
     if (!target || target !== $("#character-status")) return;
@@ -1774,6 +2609,38 @@
     }
   });
   choice.addEventListener("click", (event) => {
+    const upgradePreviewToggle = event.target.closest && event.target.closest("button[data-toggle-upgrade-preview]");
+    if (upgradePreviewToggle && choice.contains(upgradePreviewToggle) && state) {
+      upgradePreviewEnabled = !upgradePreviewEnabled;
+      renderChoices(state);
+      syncKeywordTooltip();
+      choice.querySelector("button[data-toggle-upgrade-preview]")?.focus();
+      return;
+    }
+    const upgradeChoiceButton = event.target.closest && event.target.closest("button[data-upgrade-choice-index]");
+    if (upgradeChoiceButton && choice.contains(upgradeChoiceButton) && state) {
+      const optionIndex = Number(upgradeChoiceButton.dataset.upgradeChoiceIndex);
+      const option = (Array.isArray(state.options) ? state.options : [])
+        .find((item) => Number(item.index) === optionIndex);
+      if (option) openUpgradeComparison([option], option.command);
+      return;
+    }
+    const eventPreviewButton = event.target.closest && event.target.closest("button[data-event-option-index][data-event-card-index]");
+    if (eventPreviewButton && choice.contains(eventPreviewButton) && state) {
+      const optionIndex = Number(eventPreviewButton.dataset.eventOptionIndex);
+      const cardIndex = Number(eventPreviewButton.dataset.eventCardIndex);
+      const option = (Array.isArray(state.options) ? state.options : [])
+        .find((item) => Number(item.index) === optionIndex);
+      const card = option && Array.isArray(option.cardPreviews) ? option.cardPreviews[cardIndex] : null;
+      if (card) openCardPreview(card);
+      return;
+    }
+    const eventChoiceRow = event.target.closest && event.target.closest(".event-card-option[data-event-choice-command]");
+    if (eventChoiceRow && choice.contains(eventChoiceRow)) {
+      if (eventChoiceRow.classList.contains("disabled") || !connected || submitting || (state && state.busy)) return;
+      send(eventChoiceRow.dataset.eventChoiceCommand);
+      return;
+    }
     const previewButton = event.target.closest && event.target.closest("button[data-card-preview-index]");
     if (previewButton && choice.contains(previewButton) && state) {
       const rewardIndex = Number(previewButton.dataset.cardPreviewIndex);
@@ -1797,11 +2664,26 @@
       else if (selectionDraftIndices.size >= max) return;
       else selectionDraftIndices.add(index);
       const keepFocus = document.activeElement === button;
+      const reachedMax = selectionDraftIndices.size === max;
+      const selectedUpgradeOptions = reachedMax && Array.isArray(state.options)
+        ? state.options.filter((option) => selectionDraftIndices.has(Number(option.index))) : [];
+      const upgradeCommand = reachedMax
+        ? "choose " + [...selectionDraftIndices].sort((a,b)=>a-b).join(" ") : "";
       renderChoices(state);
       if (keepFocus) choice.querySelector(`button[data-choice-index="${index}"]`)?.focus();
+      if (reachedMax && selectedUpgradeOptions.length && selectedUpgradeOptions.every((option) => option.upgradePreview))
+        openUpgradeComparison(selectedUpgradeOptions, upgradeCommand);
       return;
     }
     send(button.dataset.command);
+  });
+  choice.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const eventChoiceRow = event.target.closest && event.target.closest(".event-card-option[data-event-choice-command]");
+    if (!eventChoiceRow || event.target !== eventChoiceRow) return;
+    event.preventDefault();
+    if (eventChoiceRow.classList.contains("disabled") || !connected || submitting || (state && state.busy)) return;
+    send(eventChoiceRow.dataset.eventChoiceCommand);
   });
   routePreview.addEventListener("click", (event) => {
     const button = event.target.closest && event.target.closest("button[data-command]");
@@ -1822,6 +2704,37 @@
       if (state) renderWelcome(state);
       return;
     }
+    const timelineNode = event.target.closest && event.target.closest("button[data-timeline-epoch]");
+    if (timelineNode) {
+      selectedTimelineEpochId = timelineNode.dataset.timelineEpoch || "";
+      if (state) renderWelcome(state);
+      return;
+    }
+    const compendiumStats = event.target.closest && event.target.closest("button[data-compendium-stats]");
+    if (compendiumStats) {
+      compendiumShowStats = !compendiumShowStats;
+      if (state) renderWelcome(state);
+      return;
+    }
+    const compendiumSection = event.target.closest && event.target.closest("button[data-compendium-section]");
+    if (compendiumSection) {
+      compendiumSectionId = compendiumSection.dataset.compendiumSection || "";
+      compendiumSelectedId = "";
+      compendiumSearch = "";
+      compendiumPool = "全部";
+      compendiumType = "全部";
+      compendiumRarity = "全部";
+      compendiumSort = "原版顺序";
+      startMenuView = "compendium-section";
+      if (state) renderWelcome(state);
+      return;
+    }
+    const compendiumEntry = event.target.closest && event.target.closest("button[data-compendium-id]");
+    if (compendiumEntry && !compendiumEntry.disabled) {
+      compendiumSelectedId = compendiumEntry.dataset.compendiumId || "";
+      if (state) renderWelcome(state);
+      return;
+    }
     const button = event.target.closest && event.target.closest("button[data-menu-action]");
     if (!button || button.disabled || !state) return;
     const action = button.dataset.menuAction;
@@ -1836,15 +2749,46 @@
       renderWelcome(state);
     } else if (action === "timeline") {
       startMenuView = "timeline";
+      selectedTimelineEpochId = "";
       renderWelcome(state);
+      await send("timeline open");
+    } else if (action === "compendium") {
+      startMenuView = "compendium";
+      compendiumSectionId = "";
+      compendiumSelectedId = "";
+      compendiumSearch = "";
+      compendiumPool = "全部";
+      compendiumType = "全部";
+      compendiumRarity = "全部";
+      compendiumSort = "原版顺序";
+      renderWelcome(state);
+      await send("compendium open");
     } else if (action === "reveal-epoch") {
       const epochId = button.dataset.epochId;
       if (!epochId) return;
+      selectedTimelineEpochId = epochId;
+      if (state.mainMenu && state.mainMenu.timelineForced && !state.mainMenu.timelineOpen)
+        await send("timeline open");
       await send("reveal " + epochId);
-      startMenuView = state && state.mainMenu && state.mainMenu.timelineForced ? "timeline" : "landing";
+      startMenuView = state && state.mainMenu && (state.mainMenu.timelineForced || state.mainMenu.timelineOpen)
+        ? "timeline" : "landing";
       if (state) renderWelcome(state);
     } else if (action === "back") {
+      const closingTimeline = startMenuView === "timeline";
+      const closingCompendium = startMenuView === "compendium";
       startMenuView = startMenuView === "characters" ? characterParentView : "landing";
+      renderWelcome(state);
+      if (closingTimeline) await send("timeline close");
+      else if (closingCompendium) await send("compendium close");
+    } else if (action === "compendium-back") {
+      startMenuView = "compendium";
+      compendiumSectionId = "";
+      compendiumSelectedId = "";
+      compendiumSearch = "";
+      compendiumPool = "全部";
+      compendiumType = "全部";
+      compendiumRarity = "全部";
+      compendiumSort = "原版顺序";
       renderWelcome(state);
     } else if (action === "continue") {
       await send("continue");
@@ -1856,18 +2800,38 @@
     } else if (action === "confirm-abandon") {
       await send("abandon");
       if (state) {
-        const unlocks = Array.isArray(state.timelineCharacterUnlocks) ? state.timelineCharacterUnlocks : [];
-        const timelinePending = Boolean(state.mainMenu && state.mainMenu.timelineForced && unlocks.length);
-        if (timelinePending) startMenuView = "timeline";
-        else if (!state.hasRunSave && (!state.player || state.phase === "victory" || state.phase === "defeat")) {
-          startMenuView = "landing";
-        }
+        startMenuView = "landing";
         renderWelcome(state);
       }
     } else if (action === "cancel-abandon") {
       startMenuView = "landing";
       renderWelcome(state);
     }
+  });
+  welcome.addEventListener("input", (event) => {
+    const search = event.target.closest && event.target.closest("input[data-compendium-search]");
+    if (!search) return;
+    compendiumSearch = search.value;
+    if (compendiumComposing || event.isComposing) return;
+    if (state) renderWelcome(state);
+  });
+  welcome.addEventListener("compositionstart", (event) => {
+    if (event.target.matches && event.target.matches("input[data-compendium-search]")) compendiumComposing = true;
+  });
+  welcome.addEventListener("compositionend", (event) => {
+    if (!event.target.matches || !event.target.matches("input[data-compendium-search]")) return;
+    compendiumComposing = false;
+    compendiumSearch = event.target.value;
+    if (state) renderWelcome(state);
+  });
+  welcome.addEventListener("change", (event) => {
+    const select = event.target.closest && event.target.closest("select[data-compendium-filter]");
+    if (!select) return;
+    if (select.dataset.compendiumFilter === "pool") compendiumPool = select.value;
+    else if (select.dataset.compendiumFilter === "type") compendiumType = select.value;
+    else if (select.dataset.compendiumFilter === "rarity") compendiumRarity = select.value;
+    else if (select.dataset.compendiumFilter === "sort") compendiumSort = select.value;
+    if (state) renderWelcome(state);
   });
   commandHistoryList.addEventListener("click", (event) => {
     const button = event.target.closest && event.target.closest("button.command-history-item");

@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#141312"><title>杀戮尖塔 II · 命令版</title><link rel="stylesheet" href="/style.css?v=20260928-regent-1"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#141312"><title>杀戮尖塔 II · 命令版</title><link rel="stylesheet" href="/style.css?v=20260929-rest-upgrade-preview-1"></head>
 <body>
 <header class="masthead"><div class="wordmark"><span class="mark" aria-hidden="true">Ⅱ</span><div>杀戮尖塔 <span class="roman">II</span></div></div><div class="edition">版本 23811903 <span class="separator">/</span> 非官方命令界面</div><div id="connection" class="connection" role="button" tabindex="0" aria-label="规则引擎连接状态" aria-disabled="true"><i></i><span>连接中</span></div></header>
-<main>
+<main class="no-player">
 <section class="workspace" aria-label="游戏命令终端">
 <div class="workspace-heading"><h1 id="location">尖塔入口</h1><span id="stage" class="stage">等待启程</span></div>
 <div id="encounter" class="encounter" aria-live="polite" hidden></div>
@@ -11,7 +11,7 @@
 <div id="scroll-area" class="scroll-area">
 <div id="welcome" class="welcome" aria-live="polite"></div>
 <section id="map-view" class="map-view" role="dialog" aria-modal="true" aria-label="旅程地图" hidden>
-<div class="map-heading"><div><span class="eyebrow">ROUTE MAP</span><h2>旅程路线</h2></div><div class="map-tools" role="group" aria-label="路线查看和标注工具"><button id="map-zoom-out" type="button" title="缩小地图" aria-label="缩小地图">−</button><span id="map-zoom-label" class="map-zoom-label" aria-live="polite">100%</span><button id="map-zoom-reset" type="button" title="恢复地图默认大小" aria-label="恢复地图默认大小">重置</button><button id="map-zoom-in" type="button" title="放大地图" aria-label="放大地图">+</button><button id="map-draw" type="button" aria-pressed="false">手绘</button><button id="map-erase" type="button" aria-pressed="false">擦除</button><button id="map-clear" type="button">清除笔迹</button><button id="map-close" type="button" aria-label="收起地图">收起</button></div></div>
+<div class="map-heading"><div><h2>旅程路线</h2></div><div class="map-tools" role="group" aria-label="路线查看和标注工具"><button id="map-zoom-out" type="button" title="缩小地图" aria-label="缩小地图">−</button><span id="map-zoom-label" class="map-zoom-label" aria-live="polite">100%</span><button id="map-zoom-reset" type="button" title="恢复地图默认大小" aria-label="恢复地图默认大小">重置</button><button id="map-zoom-in" type="button" title="放大地图" aria-label="放大地图">+</button><button id="map-draw" type="button" aria-pressed="false">手绘</button><button id="map-erase" type="button" aria-pressed="false">擦除</button><button id="map-clear" type="button">清除笔迹</button><button id="map-close" type="button" aria-label="收起地图">收起</button></div></div>
 <div class="map-canvas" role="region" tabindex="0" aria-label="可滚动查看完整路线图"><svg id="map-svg" role="img" aria-label="尖塔路线图"><g id="map-guides"></g><g id="map-links"></g><g id="map-nodes"></g><g id="map-ink"></g></svg></div>
 <div class="map-footer"><div id="map-legend" class="map-legend"></div><div id="map-next" class="map-next"></div></div>
 <p class="map-note">当前节点会自动定位到视区中央；可用缩放按钮或键盘 <code>+</code>/<code>-</code> 调整大小，<code>0</code> 恢复默认。滚轮或触屏滑动可查看完整路线。路线取自原版节点与连接；可点击可达节点直接前进，也可在命令框手动输入 <code>move 编号</code>。手绘线只在此标签页用于规划。</p>
@@ -26,7 +26,7 @@
 <div id="hand" class="hand" hidden></div>
 <div class="command-area"><div class="prompt-line"><span id="prompt">正在连接规则引擎…</span><span id="working" hidden>结算中<span class="dots">…</span></span></div><form id="command-form" autocomplete="off"><label for="command" class="command-symbol" aria-label="命令">›</label><input id="command" type="text" spellcheck="false" autocapitalize="off" aria-label="输入游戏命令" placeholder="输入 help 查看命令" maxlength="256" disabled><button type="submit" id="submit" disabled>执行 <span>↵</span></button></form><div class="input-hints"><span><kbd>↑</kbd><kbd>↓</kbd> 历史命令 <span class="hint-gap"><kbd>Tab</kbd> 补全</span></span><span>点击可直接行动 · 命令框可手动操作</span></div></div>
 </section>
-<aside class="inspector" aria-label="角色和旅程状态">
+<aside class="inspector" aria-label="角色和旅程状态" hidden>
 <div class="character-heading"><span class="eyebrow">角色状态</span><div class="character-name"><b id="player-name">铁甲战士</b><span id="player-class">铁甲战士</span></div></div>
 <div id="character-status" class="character-status"><div class="empty-status">尚未踏入尖塔</div></div>
 <section id="route-preview" class="side-section route-preview-panel" aria-label="路线预览" hidden></section>
@@ -37,7 +37,7 @@
 </aside>
 </main>
 <dialog id="intent-dialog" class="intent-dialog" aria-labelledby="intent-dialog-title">
-<div class="intent-dialog-heading"><div><span class="eyebrow">ENEMY INTENT</span><h2 id="intent-dialog-title">敌人意图</h2></div><button id="intent-dialog-close" class="intent-dialog-close" type="button" aria-label="关闭意图说明">×</button></div>
+<div class="intent-dialog-heading"><div><h2 id="intent-dialog-title">敌人意图</h2></div><button id="intent-dialog-close" class="intent-dialog-close" type="button" aria-label="关闭意图说明">×</button></div>
 <div id="intent-dialog-content" class="intent-dialog-content"></div>
 </dialog>
 <dialog id="card-preview-dialog" class="card-preview-dialog" aria-labelledby="card-preview-title">
@@ -45,10 +45,15 @@
 <div id="card-preview-body" class="card-preview-body"></div>
 <div id="card-preview-actions" class="card-preview-actions"></div>
 </dialog>
+<div id="keyword-tooltip" class="keyword-tooltip" popover="manual" role="tooltip" aria-hidden="true"><strong id="keyword-tooltip-title"></strong><span id="keyword-tooltip-description"></span></div>
+<dialog id="deck-dialog" class="deck-dialog" aria-labelledby="deck-dialog-title">
+<div class="deck-dialog-heading"><div><span class="eyebrow">牌组</span><h2 id="deck-dialog-title">当前牌组</h2></div><button id="deck-dialog-close" class="intent-dialog-close" type="button" aria-label="关闭牌组">×</button></div>
+<div class="deck-browser"><div id="deck-card-list" class="deck-card-list"></div><section id="deck-card-detail" class="deck-card-detail" aria-live="polite"></section></div>
+</dialog>
 <dialog id="run-abandon-dialog" class="run-abandon-dialog" aria-labelledby="run-abandon-title" aria-describedby="run-abandon-body">
 <h2 id="run-abandon-title">你确定吗？</h2>
 <p id="run-abandon-body">放弃游戏会被视为本局失败。</p>
 <div class="run-abandon-dialog-actions"><button id="run-abandon-cancel" class="menu-button menu-secondary" type="button">不了</button><button id="run-abandon-confirm" class="menu-button menu-primary" type="button">好的</button></div>
 </dialog>
-<script src="/app.js?v=20260928-regent-1" defer></script>
+<script src="/app.js?v=20260929-rest-upgrade-preview-1" defer></script>
 </body></html>

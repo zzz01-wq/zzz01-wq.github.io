@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using MegaCrit.Sts2.Core.Debug;
+using MegaCrit.Sts2.Core.Achievements;
 using MegaCrit.Sts2.Core.TestSupport;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Characters;
@@ -15,6 +16,8 @@ using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Relics;
+using MegaCrit.Sts2.Core.Entities.UI;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Ancients;
 using MegaCrit.Sts2.Core.Events;
@@ -37,10 +40,13 @@ using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Events;
+using MegaCrit.Sts2.Core.Models.Encounters;
+using MegaCrit.Sts2.Core.Models.Acts;
 using MegaCrit.Sts2.Core.Unlocks;
 using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Logging;
+using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Timeline;
 using MegaCrit.Sts2.Core.Timeline.Epochs;
 
@@ -62,6 +68,7 @@ public partial class Main : Node, ICardSelector
     private bool rewardSelectionPending;
     private int rewardSelectionIndex;
     private bool cardSelectionCancelable;
+    private bool cardSelectionUpgradePreview;
     private bool combatHistoryListenerAttached;
     private bool restDone, treasureOpened, treasurePicking, treasureDone, gameWon;
     // The original map vote action only records the vote. The follow-up
@@ -82,10 +89,15 @@ public partial class Main : Node, ICardSelector
     // exact original -> final card after the original event task settles.
     private PlayerMapPointHistoryEntry? observedEventHistoryEntry;
     private int reportedEventTransformCount;
+    private int reportedEventUpgradeCount;
     private string seed = "";
     private bool failed;
     private bool runEndRecorded;
     private bool abandonPending;
+    private bool timelineOpen;
+    private bool compendiumOpen;
+    private object? timelineDataCache;
+    private object? compendiumDataCache;
     private bool TestHooksEnabled => System.Environment.GetEnvironmentVariable("SPIRECLI_ENABLE_TEST_HOOKS") == "1";
     private static RunManager RM => RunManager.Instance;
     private static CombatManager CM => CombatManager.Instance;
@@ -342,6 +354,41 @@ public partial class Main : Node, ICardSelector
         }
         if (cmd is "status" or "状态" or "look") { Describe(); return; }
         if (cmd == "clear") return;
+        if (cmd == "timeline")
+        {
+            if (a.Length != 2 || (a[1] != "open" && a[1] != "close"))
+                throw new CommandError("用法：timeline open|close");
+            if (player != null && !gameWon && !Dead && !failed)
+                throw new CommandError("进行中的旅程不能打开主菜单时间线。");
+            if (a[1] == "close" && TimelineRevealableViews().Length > 0)
+                throw new CommandError("请先在时间线揭示所有待解锁的历史节点。");
+            timelineOpen = a[1] == "open";
+            if (timelineOpen)
+            {
+                compendiumOpen = false;
+                timelineDataCache=null;
+            }
+            else timelineDataCache=null;
+            return;
+        }
+        if (cmd == "compendium")
+        {
+            if (a.Length != 2 || (a[1] != "open" && a[1] != "close"))
+                throw new CommandError("用法：compendium open|close");
+            if (player != null && !gameWon && !Dead && !failed)
+                throw new CommandError("进行中的旅程不能打开百科大全。");
+            if (a[1] == "open" && !DebugSettings.DevSkip
+                && TimelineRevealableViews().Length > 0 && !HasPendingRunSave())
+                throw new CommandError("请先在时间线揭示所有待解锁的历史节点。");
+            compendiumOpen = a[1] == "open";
+            if (compendiumOpen)
+            {
+                timelineOpen = false;
+                compendiumDataCache=null;
+            }
+            else compendiumDataCache=null;
+            return;
+        }
         if (cmd == "new")
         {
             if (a.Length < 2) throw new CommandError("用法：new ironclad|silent|regent [种子] [进阶0–10]");
@@ -354,6 +401,8 @@ public partial class Main : Node, ICardSelector
             if (a.Length > 4 || asc < 0 || asc > 10) throw new CommandError("用法：new ironclad|silent|regent [种子] [进阶0–10]");
             if (run != null && !failed && !Dead && !gameWon) throw new CommandError("已有进行中的旅程。输入 abandon 放弃后再开始。");
             if (run == null && HasPendingRunSave()) throw new CommandError("检测到可继续的存档。输入 continue 恢复，或输入 abandon 放弃本局（计为失败）后开始新旅程。");
+            if (!DebugSettings.DevSkip && TimelineRevealableViews().Length > 0 && !HasPendingRunSave())
+                throw new CommandError("请先在时间线揭示所有待解锁的历史节点，再开始新旅程。");
             if (run != null) SaveManager.Instance.DeleteCurrentRun();
             Start(NewRun(character, a.Length > 2 ? a[2] : SeedHelper.GetRandomSeed(), asc)); return;
         }
@@ -373,7 +422,7 @@ public partial class Main : Node, ICardSelector
         if (cmd == "reveal")
         {
             if (a.Length != 2) throw new CommandError("用法：reveal 历史节点编号");
-            RevealCharacterEpoch(a[1].ToUpperInvariant());
+            RevealTimelineEpoch(a[1].ToUpperInvariant());
             return;
         }
         if(cmd=="continue")
@@ -660,6 +709,10 @@ public partial class Main : Node, ICardSelector
     private async Task NewRun(CharacterModel character,string chosenSeed,int asc)
     {
         ResetRunState();
+        timelineOpen=false;
+        compendiumOpen=false;
+        timelineDataCache=null;
+        compendiumDataCache=null;
         seed=chosenSeed;
         // The terminal skips the original Timeline UI; use its normal Neow-ready standard profile.
         if(!SaveManager.Instance.IsEpochRevealed<NeowEpoch>())
@@ -955,6 +1008,7 @@ public partial class Main : Node, ICardSelector
         rewardSelectionPending=false;
         rewardSelectionIndex=0;
         cardSelectionCancelable=false;
+        cardSelectionUpgradePreview=false;
         crystalSphere=null;
         while(rewardStack.TryPop(out var pendingReward)) pendingReward.done.TrySetCanceled();
         if(operation!=null) ObserveFault(operation);
@@ -986,6 +1040,7 @@ public partial class Main : Node, ICardSelector
         processedCombatHistoryCount=0;
         observedEventHistoryEntry=null;
         reportedEventTransformCount=0;
+        reportedEventUpgradeCount=0;
         seed="";
     }
 
@@ -1027,12 +1082,18 @@ public partial class Main : Node, ICardSelector
         if(run?.CurrentRoom is not RestSiteRoom restSite||idx<0||idx>=restSite.Options.Count)
             throw new CommandError("休息处选项已变化，请重新查看当前状态。");
         bool previousCancelable=cardSelectionCancelable;
+        bool previousUpgradePreview=cardSelectionUpgradePreview;
         cardSelectionCancelable=restSite.Options[idx] is SmithRestSiteOption or CookRestSiteOption;
+        cardSelectionUpgradePreview=restSite.Options[idx] is SmithRestSiteOption;
         try
         {
             if(await RM.RestSiteSynchronizer.ChooseLocalOption(idx)) restDone=true;
         }
-        finally { cardSelectionCancelable=previousCancelable; }
+        finally
+        {
+            cardSelectionCancelable=previousCancelable;
+            cardSelectionUpgradePreview=previousUpgradePreview;
+        }
     }
 
     private async Task OpenTreasure(TreasureRoom room)
@@ -1100,7 +1161,7 @@ public partial class Main : Node, ICardSelector
         }
         if(minSelect<0||maxSelect<minSelect||minSelect>cards.Count)
             throw new ArgumentOutOfRangeException(nameof(minSelect),$"原版选择范围 {minSelect}–{maxSelect} 与 {cards.Count} 张候选牌不匹配。");
-        var choice=new CardListChoice(cards,minSelect,Math.Min(maxSelect,cards.Count),cardSelectionCancelable);
+        var choice=new CardListChoice(cards,minSelect,Math.Min(maxSelect,cards.Count),cardSelectionCancelable,cardSelectionUpgradePreview);
         pendingChoices.Enqueue(choice);
         return choice.Completion.Task;
     }
@@ -1298,12 +1359,21 @@ public partial class Main : Node, ICardSelector
         {
             observedEventHistoryEntry=historyEntry;
             reportedEventTransformCount=historyEntry.CardsTransformed.Count;
+            reportedEventUpgradeCount=historyEntry.UpgradedCards.Count;
             return;
         }
-        if(historyEntry.CardsTransformed.Count<=reportedEventTransformCount) return;
         foreach(var change in historyEntry.CardsTransformed.Skip(reportedEventTransformCount))
             Say($"原版变化结果：{SerializableCardName(change.OriginalCard)} → {SerializableCardName(change.FinalCard)}");
         reportedEventTransformCount=historyEntry.CardsTransformed.Count;
+        foreach(ModelId cardId in historyEntry.UpgradedCards.Skip(reportedEventUpgradeCount))
+            Say($"原版变化结果：升级了 {SerializableUpgradedCardName(cardId)}");
+        reportedEventUpgradeCount=historyEntry.UpgradedCards.Count;
+    }
+
+    private static string SerializableUpgradedCardName(ModelId id)
+    {
+        try { return Clean(ModelDb.GetById<CardModel>(id).Title); }
+        catch(Exception) { return id.Entry; }
     }
 
     private static string SerializableCardName(SerializableCard card)
@@ -1361,8 +1431,54 @@ public partial class Main : Node, ICardSelector
     {
         name=Text(power.Title),
         type=power.Type.ToString(),
+        amount=power.DisplayAmount,
         description=PowerDescription(power)
     }).ToArray();
+    private object[] PotionViews()
+    {
+        if(player==null) return [];
+        bool combatUseAllowed=CM.IsInProgress
+            && player.Creature.IsAlive
+            && player.Creature.CombatState?.CurrentSide==player.Creature.Side
+            && !CM.PlayerActionsDisabled;
+        return player.PotionSlots.Select((potion,index)=>(object)(potion==null
+            ?new {index=index+1,name="空槽",description="",targetType="",needsTarget=false,canUse=false,action="空槽"}
+            :PotionView(potion,index+1,combatUseAllowed))).ToArray();
+    }
+    private object PotionView(PotionModel potion,int index,bool combatUseAllowed)
+    {
+        bool needsTarget=potion.TargetType is TargetType.AnyEnemy or TargetType.AnyAlly;
+        bool hasTarget=potion.TargetType switch
+        {
+            TargetType.AnyEnemy=>Enemies.Count>0,
+            TargetType.AnyAlly=>player?.Creature.CombatState?.PlayerCreatures.Any(creature=>creature.IsAlive&&creature!=player.Creature)==true,
+            _=>true
+        };
+        bool canUse=player!=null
+            && player.CanRemovePotions
+            && !potion.IsQueued
+            && potion.PassesCustomUsabilityCheck
+            && (potion.Usage==PotionUsage.AnyTime||(potion.Usage==PotionUsage.CombatOnly&&combatUseAllowed))
+            && hasTarget;
+        string action=!player!.CanRemovePotions?"暂不可用"
+            :potion.IsQueued?"正在使用"
+            :!potion.PassesCustomUsabilityCheck?"当前不可用"
+            :potion.Usage==PotionUsage.Automatic?"自动触发"
+            :potion.Usage==PotionUsage.None?"不可使用"
+            :potion.Usage==PotionUsage.CombatOnly&&!combatUseAllowed?"战斗中可用"
+            :!hasTarget?"没有有效目标"
+            :needsTarget?"选择目标":"点击使用";
+        return new
+        {
+            index,
+            name=Text(potion.Title),
+            description=Text(potion.DynamicDescription),
+            targetType=potion.TargetType.ToString(),
+            needsTarget,
+            canUse,
+            action
+        };
+    }
     private object[] StolenCardViews(Creature creature) => creature.Powers
         .OfType<SwipePower>()
         .Select(power=>power.StolenCard)
@@ -1592,7 +1708,7 @@ public partial class Main : Node, ICardSelector
             if(CM.IsInProgress)return "事件内战斗尚未结束，请先完成战斗 · status 查看状态";
             if(Busy||Choosing)return "事件效果仍在结算，请稍候 · status 查看状态";
             if(eventModel.IsFinished)return "事件已结束，但原版规则暂不允许离开 · status 查看状态";
-            return eventModel.CurrentOptions.Count==0?"事件正在结算，请稍候 · status 查看状态":"choose 编号处理事件选项 · map 预览路线";
+            return eventModel.CurrentOptions.Count==0?"事件正在结算，请稍候 · status 查看状态":"";
         }
         if(run?.CurrentRoom is CombatRoom { RoomType:RoomType.Boss } && NextPoints().Count==0)
             return CanLeave()
@@ -1626,15 +1742,40 @@ public partial class Main : Node, ICardSelector
     }
     private object CardPreviewView(CardModel card)=>new
     {
+        id=card.Id.Entry,
         name=Clean(card.Title),
         cost=card.EnergyCost.GetWithModifiers(CostModifiers.All),
         description=Clean(card.GetDescriptionForPile(card.Pile?.Type??PileType.None)),
         type=Text(card.Type.ToLocString()),
         hoverTips=CardHoverTips(card)
     };
+    private object? CardUpgradePreviewView(CardModel card)
+    {
+        if(!card.IsUpgradable)return null;
+        try
+        {
+            CardModel upgraded=(CardModel)card.MutableClone();
+            upgraded.UpgradeInternal();
+            upgraded.UpgradePreviewType=CardUpgradePreviewType.Deck;
+            return new
+            {
+                id=upgraded.Id.Entry,
+                name=Clean(upgraded.Title),
+                cost=upgraded.EnergyCost.GetWithModifiers(CostModifiers.All),
+                description=Clean(upgraded.GetDescriptionForUpgradePreview()),
+                type=Text(upgraded.Type.ToLocString()),
+                hoverTips=CardHoverTips(upgraded)
+            };
+        }
+        catch(Exception ex)
+        {
+            System.Console.Error.WriteLine($"无法生成原版升级预览 {card.Id.Entry}: {ex.Message}");
+            return null;
+        }
+    }
     private static CardModel? SpecialRewardCard(SpecialCardReward reward)
         =>reward.HoverTips.OfType<CardHoverTip>().Select(tip=>tip.Card).FirstOrDefault();
-    private object CardView(CardModel c,int i,string? command=null,bool multiSelect=false)=>new {index=i+1,id=c.Id.Entry,name=c.Title,cost=c.EnergyCost.GetWithModifiers(CostModifiers.All),description=Clean(c.GetDescriptionForPile(c.Pile?.Type??PileType.None)),type=Text(c.Type.ToLocString()),hoverTips=CardHoverTips(c),targetType=c.TargetType.ToString(),command,multiSelect};
+    private object CardView(CardModel c,int i,string? command=null,bool multiSelect=false,bool includeUpgradePreview=false)=>new {index=i+1,id=c.Id.Entry,name=c.Title,cost=c.EnergyCost.GetWithModifiers(CostModifiers.All),description=Clean(c.GetDescriptionForPile(c.Pile?.Type??PileType.None)),type=Text(c.Type.ToLocString()),hoverTips=CardHoverTips(c),upgradePreview=includeUpgradePreview?CardUpgradePreviewView(c):null,targetType=c.TargetType.ToString(),command,multiSelect};
     private object RewardOptionView(Reward reward,int index)
     {
         CardModel? card=reward is SpecialCardReward special?SpecialRewardCard(special):null;
@@ -1702,7 +1843,22 @@ public partial class Main : Node, ICardSelector
             var eventModel=e.LocalMutableEvent;
             if(eventModel.IsFinished)
                 return [new {index=1,name=Text(new LocString("events","PROCEED.title")),description="",command="map"}];
-            return eventModel.CurrentOptions.Select((o,i)=>(object)new {index=i+1,name=EventOptionText(eventModel,o.Title),description=EventOptionText(eventModel,o.Description),disabled=o.IsLocked,command="choose "+(i+1)}).ToArray();
+            return eventModel.CurrentOptions.Select((o,i)=>
+            {
+                var cardPreviews=o.HoverTips.OfType<CardHoverTip>()
+                    .Select(tip=>tip.Card)
+                    .Select(CardPreviewView)
+                    .ToArray();
+                return (object)new
+                {
+                    index=i+1,
+                    name=EventOptionText(eventModel,o.Title),
+                    description=EventOptionText(eventModel,o.Description),
+                    disabled=o.IsLocked,
+                    cardPreviews,
+                    command="choose "+(i+1)
+                };
+            }).ToArray();
         }
         if(run?.CurrentRoom is RestSiteRoom r)return r.Options.Select((o,i)=>(object)new {index=i+1,id=o.OptionId,name=Text(o.Title),description=Text(o.Description),disabled=!o.IsEnabled,command="choose "+(i+1)}).ToArray();
         if(run?.CurrentRoom is TreasureRoom&&!treasureOpened)return [new {index=1,name="开启宝箱",description="",command="open"}];
@@ -1846,12 +2002,28 @@ public partial class Main : Node, ICardSelector
         }).ToArray();
     }
 
-    private object[] CharacterEpochUnlockViews()
+    private bool CanRevealTimelineEpoch(EpochModel epoch,IReadOnlySet<string>? revealableIds=null)
+    {
+        revealableIds??=SaveManager.Instance.GetRevealableEpochs().Select(item=>item.Id).ToHashSet(StringComparer.Ordinal);
+        if(!revealableIds.Contains(epoch.Id)) return false;
+        if(epoch is Silent1Epoch)
+        {
+            // The terminal pre-reveals Neow for its standard opening. Neow's
+            // native QueueUnlocks also obtains Silent1, so keep that bootstrap
+            // slot hidden until the original Ironclad run requirement is met.
+            var stats=SaveManager.Instance.Progress.GetStatsForCharacter(ModelDb.Character<Ironclad>().Id);
+            if(stats==null || stats.TotalWins+stats.TotalLosses<=0) return false;
+        }
+        return true;
+    }
+
+    private object[] TimelineRevealableViews()
     {
         var revealableIds=SaveManager.Instance.GetRevealableEpochs().Select(item=>item.Id).ToHashSet(StringComparer.Ordinal);
-        EpochModel[] supportedEpochs=[EpochModel.Get<Silent1Epoch>(),EpochModel.Get<Regent1Epoch>()];
-        return supportedEpochs
-            .Where(epoch=>revealableIds.Contains(epoch.Id)&&CanRevealCharacterEpoch(epoch)&&!SaveManager.Instance.IsEpochRevealed(epoch.Id))
+        return SaveManager.Instance.Progress.Epochs
+            .Where(item=>item.State==EpochState.Obtained)
+            .Select(item=>EpochModel.Get(item.Id))
+            .Where(epoch=>CanRevealTimelineEpoch(epoch,revealableIds))
             .Select(epoch=>
             {
                 LocString unlockInfo=epoch.UnlockInfo;
@@ -1866,6 +2038,354 @@ public partial class Main : Node, ICardSelector
             }).ToArray();
     }
 
+    private object[] TimelineViews()
+    {
+        var revealableIds=SaveManager.Instance.GetRevealableEpochs().Select(item=>item.Id).ToHashSet(StringComparer.Ordinal);
+        var slots=SaveManager.Instance.Progress.Epochs
+            .Where(item=>item.State!=EpochState.ObtainedNoSlot)
+            .Select(item=>
+            {
+                EpochModel epoch=EpochModel.Get(item.Id);
+                bool revealed=item.State>=EpochState.Revealed;
+                bool obtained=item.State>=EpochState.Obtained;
+                LocString unlockInfo=epoch.UnlockInfo;
+                unlockInfo.Add("IsRevealed",variable:revealed);
+                return new
+                {
+                    id=epoch.Id,
+                    eraId=(int)epoch.Era,
+                    era=epoch.EraName,
+                    year=epoch.Year,
+                    eraPosition=epoch.EraPosition,
+                    nextIds=epoch.GetTimelineExpansion().Select(child=>child.Id).ToArray(),
+                    title=obtained?Text(epoch.Title):"",
+                    hoverTitle=Text(epoch.Title),
+                    storyTitle=revealed?epoch.StoryTitle??"":"",
+                    chapterIndex=revealed?epoch.ChapterIndex:0,
+                    state=revealed?"revealed":obtained?"obtained":"locked",
+                    stateLabel=revealed?"已揭示":obtained?"待揭示":"尚未获得",
+                    canReveal=item.State==EpochState.Obtained&&CanRevealTimelineEpoch(epoch,revealableIds),
+                    description=revealed?Clean(epoch.Description):"",
+                    unlockInfo=Text(unlockInfo),
+                    unlockText=revealed?Clean(epoch.UnlockText):""
+                };
+            })
+            .OrderBy(item=>item.eraId)
+            .ThenBy(item=>item.eraPosition)
+            .ToArray();
+        return slots.GroupBy(item=>item.eraId)
+            .Select(group=>(object)new
+            {
+                id=group.Key,
+                era=group.First().era,
+                year=group.First().year,
+                nodes=group.ToArray()
+            }).ToArray();
+    }
+
+    private void RevealTimelineEpoch(string epochId)
+    {
+        if(!EpochModel.IsValid(epochId))
+            throw new CommandError("时间线中没有这个历史节点。");
+        EpochModel epoch=EpochModel.Get(epochId);
+        SaveManager saveManager=SaveManager.Instance;
+        var progress=saveManager.Progress;
+        if(saveManager.IsEpochRevealed(epoch.Id))
+        {
+            Say($"{Text(epoch.Title)}已揭示。");
+            return;
+        }
+        var slot=progress.Epochs.FirstOrDefault(item=>item.Id==epoch.Id);
+        if(slot==null||slot.State!=EpochState.Obtained||!CanRevealTimelineEpoch(epoch))
+        {
+            LocString unlockInfo=epoch.UnlockInfo;
+            unlockInfo.Add("IsRevealed",variable:false);
+            throw new CommandError("当前尚不能揭示这个历史节点。"+Text(unlockInfo));
+        }
+
+        // The native inspect screen calls RevealEpoch, then QueueUnlocks, and
+        // QueueTimelineExpansion persists the newly reachable slots. The web
+        // host has no native timeline scene, so mirror only those persistent
+        // state effects; unlock pools continue to derive from revealed epochs.
+        saveManager.RevealEpoch(epoch.Id);
+        CharacterModel? character=epoch switch
+        {
+            Silent1Epoch=>ModelDb.Character<Silent>(),
+            Regent1Epoch=>ModelDb.Character<Regent>(),
+            Necrobinder1Epoch=>ModelDb.Character<Necrobinder>(),
+            Defect1Epoch=>ModelDb.Character<Defect>(),
+            _=>null
+        };
+        if(character!=null) progress.PendingCharacterUnlock=character.Id;
+        if(epoch is NeowEpoch)
+            saveManager.ObtainEpochOverride(EpochModel.GetId<Silent1Epoch>(),EpochState.ObtainedNoSlot);
+        foreach(EpochModel child in epoch.GetTimelineExpansion())
+        {
+            var existing=progress.Epochs.FirstOrDefault(item=>item.Id==child.Id);
+            if(existing==null||existing.State==EpochState.ObtainedNoSlot)
+                saveManager.UnlockSlot(child.Id);
+        }
+        saveManager.SaveProgressFile();
+        timelineDataCache=null;
+        compendiumDataCache=null;
+        Say(character==null?$"已揭示历史节点：{Text(epoch.Title)}。":"已揭示并解锁"+Text(character.Title)+"。");
+    }
+
+    private object CompendiumViews(SaveManager saveManager)
+    {
+        var progress=saveManager.Progress;
+        var unlockState=saveManager.GenerateUnlockStateFromProgress();
+        var unlockedCards=ModelDb.AllCardPools
+            .SelectMany(pool=>pool.GetUnlockedCards(unlockState,CardMultiplayerConstraint.None))
+            .ToHashSet();
+        var cardPoolOrder=ModelDb.AllCardPools.Select((pool,index)=>(pool,index)).ToDictionary(item=>item.pool,item=>item.index);
+        var cards=ModelDb.AllCards.Where(card=>card.ShouldShowInCardLibrary)
+            .OrderBy(card=>cardPoolOrder[card.Pool])
+            .ThenBy(card=>card.Rarity)
+            .ThenBy(card=>card.Id)
+            .Select(card=>
+        {
+            bool unlocked=unlockedCards.Contains(card);
+            bool seen=progress.DiscoveredCards.Contains(card.Id);
+            string visibility=!unlocked?"locked":seen?"visible":"unknown";
+            string title=seen?Clean(card.Title):Text(new LocString("card_library",unlocked?"UNKNOWN.title":"LOCKED.title"));
+            string description=seen?Clean(card.ToMutable().GetDescriptionForPile(PileType.None))
+                :Text(new LocString("card_library",unlocked?"UNKNOWN.description":"LOCKED.description"));
+            progress.CardStats.TryGetValue(card.Id,out var cardStats);
+            return new
+            {
+                id=card.Id.ToString(),
+                title,
+                description,
+                visibility,
+                type=Text(card.Type.ToLocString()),
+                rarity=Text(card.Rarity.ToLocString()),
+                cost=card.EnergyCost.CostsX?"X":card.EnergyCost.GetWithModifiers(CostModifiers.All).ToString(),
+                pool=card.Pool.Title,
+                picked=cardStats?.TimesPicked??0,
+                skipped=cardStats?.TimesSkipped??0,
+                won=cardStats?.TimesWon??0,
+                lost=cardStats?.TimesLost??0
+            };
+        }).ToArray();
+
+        var unlockedRelics=unlockState.Relics.ToHashSet();
+        var relics=ModelDb.AllRelics.Select(relic=>
+        {
+            bool unlocked=unlockedRelics.Contains(relic);
+            bool seen=progress.DiscoveredRelics.Contains(relic.Id);
+            string visibility=!unlocked?"locked":seen?"visible":"unknown";
+            string title=seen?Text(relic.Title):Text(new LocString("main_menu_ui",unlocked?"COMPENDIUM_RELIC_COLLECTION.unknown.title":"COMPENDIUM_RELIC_COLLECTION.locked.title"));
+            string description=seen?Text(relic.DynamicDescription):Text(new LocString("main_menu_ui",unlocked?"COMPENDIUM_RELIC_COLLECTION.unknown.description":"COMPENDIUM_RELIC_COLLECTION.locked.description"));
+            string group=Text(new LocString("relic_collection",relic.Rarity.ToString().ToUpperInvariant()));
+            return new {id=relic.Id.ToString(),title,description,flavor=seen?Text(relic.Flavor):"",visibility,rarity=relic.Rarity.ToString(),group};
+        }).ToArray();
+
+        var unlockedPotions=unlockState.Potions.ToHashSet();
+        // Match the original Potion Lab's five visible buckets. Internal and
+        // deprecated entries use PotionRarity.None and are not shown there;
+        // PotionRarityExtensions.ToLocString intentionally throws for None.
+        var potions=ModelDb.AllPotions
+            .Where(potion=>potion.Rarity is PotionRarity.Common or PotionRarity.Uncommon or PotionRarity.Rare or PotionRarity.Event or PotionRarity.Token)
+            .Select(potion=>
+        {
+            bool unlocked=unlockedPotions.Contains(potion);
+            bool seen=progress.DiscoveredPotions.Contains(potion.Id);
+            string visibility=!unlocked?"locked":seen?"visible":"unknown";
+            string title=seen?Text(potion.Title):Text(new LocString("main_menu_ui",unlocked?"POTION_LAB_COLLECTION.unknown.title":"POTION_LAB_COLLECTION.locked.title"));
+            string description=seen?Text(potion.DynamicDescription):Text(new LocString("main_menu_ui",unlocked?"POTION_LAB_COLLECTION.unknown.description":"POTION_LAB_COLLECTION.locked.description"));
+            string group=Text(new LocString("potion_lab",potion.Rarity is PotionRarity.Event or PotionRarity.Token?"SPECIAL":potion.Rarity.ToString().ToUpperInvariant()));
+            return new {id=potion.Id.ToString(),title,description,visibility,rarity=Text(potion.Rarity.ToLocString()),group};
+        }).ToArray();
+
+        var bestiary=BestiaryViews(saveManager);
+        var statistics=StatisticsView(saveManager);
+        var history=RunHistoryViews(saveManager);
+        object[] sections=
+        [
+            new {id="cards",title=Text(new LocString("main_menu_ui","COMPENDIUM_CARD_LIBRARY.title")),description=Text(new LocString("main_menu_ui","COMPENDIUM_CARD_LIBRARY.description")),count=cards.Length,visible=true},
+            new {id="relics",title=Text(new LocString("main_menu_ui","COMPENDIUM_RELIC_COLLECTION.title")),description=Text(new LocString("main_menu_ui","COMPENDIUM_RELIC_COLLECTION.description")),count=relics.Length,visible=true},
+            new {id="potions",title=Text(new LocString("main_menu_ui","COMPENDIUM_POTION_LAB.title")),description=Text(new LocString("main_menu_ui","COMPENDIUM_POTION_LAB.description")),count=potions.Length,visible=true},
+            new {id="bestiary",title=Text(new LocString("main_menu_ui","COMPENDIUM_BESTIARY.title")),description=Text(new LocString("main_menu_ui","COMPENDIUM_BESTIARY.description")),count=bestiary.Length,visible=BestiaryCanBeShown(progress)},
+            new {id="stats",title=Text(new LocString("main_menu_ui","STATISTICS.title")),description=Text(new LocString("main_menu_ui","STATISTICS.description")),count=progress.CharacterStats.Count,visible=true},
+            new {id="history",title=Text(new LocString("main_menu_ui","RUN_HISTORY.title")),description=Text(new LocString("main_menu_ui","RUN_HISTORY.description")),count=history.Length,visible=saveManager.GetRunHistoryCount()>0}
+        ];
+        return new {sections,cards,relics,potions,bestiary,statistics,history};
+    }
+
+    private static bool BestiaryCanBeShown(ProgressState progress)
+        => progress.DiscoveredActs.Count>0&&progress.EnemyStats.Values.Any(enemy=>enemy.TotalWins>0);
+
+    private object[] BestiaryViews(SaveManager saveManager)
+    {
+        var progress=saveManager.Progress;
+        var discoveredMonsters=progress.EnemyStats.Values.Where(stats=>stats.TotalWins>0).Select(stats=>stats.Id).ToHashSet();
+        var discoveredEncounters=progress.EncounterStats.Values.Where(stats=>stats.TotalWins>0).Select(stats=>stats.Id).ToHashSet();
+        var entries=new List<(int actOrder,int roomOrder,string encounterTitle,string entryTitle,object view)>();
+        ActModel[] acts=ModelDb.Acts.ToArray();
+        for(int actIndex=0;actIndex<acts.Length;actIndex++)
+        {
+            ActModel act=acts[actIndex];
+            if(!progress.DiscoveredActs.Contains(act.Id)) continue;
+            var seenInAct=new HashSet<ModelId>();
+            foreach(EncounterModel encounter in act.AllEncounters)
+            foreach(MonsterModel monster in encounter.AllPossibleMonsters)
+            {
+                if(!seenInAct.Add(monster.Id)||!monster.ShouldShowInCompendium) continue;
+                bool discovered=discoveredMonsters.Contains(monster.Id);
+                int wins=progress.EnemyStats.TryGetValue(monster.Id,out var enemyStats)?enemyStats.TotalWins:0;
+                string[] moves=[];
+                if(discovered)
+                {
+                    MonsterModel mutable=monster.ToMutable();
+                    mutable.SetUpForCombat();
+                    moves=mutable.GenerateBestiaryMoveList(null).Select(move=>Clean(move.displayName)).Distinct(StringComparer.Ordinal).ToArray();
+                }
+                string encounterTitle=Text(encounter.Title);
+                string entryTitle=Text(monster.Title);
+                string roomType=encounter.RoomType switch
+                {
+                    RoomType.Boss=>"首领战",
+                    RoomType.Elite=>"精英战",
+                    _=>"普通战斗"
+                };
+                object view=new
+                {
+                    id=monster.Id.ToString(),
+                    act=Text(act.Title),
+                    title=discovered?Text(monster.Title):Text(new LocString("bestiary","UNSEEN.monsterName")),
+                    hoverTitle=entryTitle,
+                    encounter=discovered?encounterTitle:"",
+                    roomType,
+                    visibility=discovered?"visible":"unknown",
+                    wins,
+                    description=Text(new LocString("bestiary","DESCRIPTION.placeholder")),
+                    moves
+                };
+                entries.Add((actIndex,(int)encounter.RoomType,encounterTitle,entryTitle,view));
+            }
+            if(act is Hive)
+            {
+                EncounterModel encounter=ModelDb.Encounter<DecimillipedeElite>();
+                bool discovered=discoveredEncounters.Contains(encounter.Id);
+                int wins=progress.EncounterStats.TryGetValue(encounter.Id,out var encounterStats)?encounterStats.TotalWins:0;
+                string encounterTitle=Text(encounter.Title);
+                object view=new
+                {
+                    id=encounter.Id.ToString(),
+                    act=Text(act.Title),
+                    title=discovered?encounterTitle:Text(new LocString("bestiary","UNSEEN.monsterName")),
+                    hoverTitle=encounterTitle,
+                    encounter=discovered?encounterTitle:"",
+                    roomType="精英战",
+                    visibility=discovered?"visible":"unknown",
+                    wins,
+                    description=Text(new LocString("bestiary","DESCRIPTION.placeholder")),
+                    moves=Array.Empty<string>()
+                };
+                entries.Add((actIndex,(int)RoomType.Elite,encounterTitle,encounterTitle,view));
+            }
+        }
+        return entries
+            .OrderBy(entry=>entry.actOrder)
+            .ThenBy(entry=>entry.roomOrder)
+            .ThenBy(entry=>entry.roomOrder==(int)RoomType.Boss?entry.encounterTitle:entry.entryTitle,StringComparer.CurrentCulture)
+            .ThenBy(entry=>entry.roomOrder==(int)RoomType.Boss?entry.entryTitle:"",StringComparer.CurrentCulture)
+            .Select(entry=>entry.view)
+            .ToArray();
+    }
+
+    private static string StatsLine(string key,params (string name,object value)[] variables)
+    {
+        LocString line=new("stats_screen",key);
+        foreach(var variable in variables) line.AddObj(variable.name,variable.value);
+        return Text(line);
+    }
+
+    private object StatisticsView(SaveManager saveManager)
+    {
+        var progress=saveManager.Progress;
+        var events=ModelDb.AllEvents.Select(item=>item.Id).ToHashSet();
+        string Ratio(int current,int total)=>Text(StringHelper.RatioFormat(current,total));
+        int revealedEpochCount=progress.Epochs.Count(epoch=>epoch.State>=EpochState.Revealed);
+        string epochRatio=EpochModel.AllEpochIds.All(id=>progress.Epochs.Any(epoch=>epoch.Id==id))
+            ?Ratio(revealedEpochCount,progress.Epochs.Count)
+            :Text(StringHelper.RatioFormat(revealedEpochCount.ToString(),"??"));
+        int aggregateAscensionProgress=saveManager.GetAggregateAscensionProgress();
+        string[] overall=
+        [
+            StatsLine("ENTRY_ACHIEVEMENTS.top",("Amount",Ratio(AchievementsUtil.UnlockedAchievementCount(),AchievementsUtil.TotalAchievementCount()))),
+            StatsLine("ENTRY_ACHIEVEMENTS.bottom",("Amount",epochRatio)),
+            StatsLine("ENTRY_PLAYTIME.top",("Playtime",TimeFormatting.Format(progress.TotalPlaytime))),
+            ..(progress.Wins>0?new[]{StatsLine("ENTRY_PLAYTIME.bottom",("FastestWin",TimeFormatting.Format(progress.FastestVictory)))}:Array.Empty<string>()),
+            StatsLine("ENTRY_CARDS.top",("Amount",Ratio(saveManager.GetTotalUnlockedCards(),SaveManager.GetUnlockableCardCount()))),
+            StatsLine("ENTRY_CARDS.bottom",("Amount",Ratio(progress.DiscoveredCards.Count,ModelDb.AllCards.Count()))),
+            ..(aggregateAscensionProgress>0?new[]{StatsLine("ENTRY_WIN_LOSS.top",("Amount",Ratio(aggregateAscensionProgress,SaveManager.GetAggregateAscensionCount())))}:Array.Empty<string>()),
+            StatsLine("ENTRY_WIN_LOSS.bottom",("Wins",progress.Wins),("Losses",progress.Losses)),
+            StatsLine("ENTRY_MONSTER.top",("Amount",StringHelper.Radix(saveManager.GetTotalKills()))),
+            StatsLine("ENTRY_MONSTER.bottom",("Amount",Ratio(progress.EnemyStats.Count,ModelDb.Monsters.Count()))),
+            StatsLine("ENTRY_RELIC.top",("Amount",Ratio(saveManager.GetTotalUnlockedRelics(),SaveManager.GetUnlockableRelicCount()))),
+            StatsLine("ENTRY_RELIC.bottom",("Amount",Ratio(progress.DiscoveredRelics.Count,ModelDb.AllRelics.Count()))),
+            StatsLine("ENTRY_POTION.top",("Amount",Ratio(saveManager.GetTotalUnlockedPotions(),SaveManager.GetUnlockablePotionCount()))),
+            StatsLine("ENTRY_POTION.bottom",("Amount",ModelDb.AllPotions.Count())),
+            StatsLine("ENTRY_EVENTS.top",("Amount","N/A")),
+            StatsLine("ENTRY_EVENTS.bottom",("Amount",Ratio(progress.DiscoveredEvents.Intersect(events).Count(),events.Count))),
+            StatsLine("ENTRY_STREAK.top",("Amount",progress.BestWinStreak)),
+            ..(aggregateAscensionProgress>999999999?new[]{StatsLine("ENTRY_STREAK.bottom",("Amount",5m))}:Array.Empty<string>())
+        ];
+        CharacterModel[] characterModels=[
+            ModelDb.Character<Ironclad>(),
+            ModelDb.Character<Silent>(),
+            ModelDb.Character<Regent>(),
+            ModelDb.Character<Necrobinder>(),
+            ModelDb.Character<Defect>()
+        ];
+        var characters=characterModels.Select(character=>
+        {
+            var stats=progress.GetStatsForCharacter(character.Id);
+            if(stats==null) return null;
+            return (object)new
+            {
+                id=character.Id.ToString(),
+                title=Text(character.Title),
+                lines=new[]
+                {
+                    StatsLine("ENTRY_CHAR_PLAYTIME.top",("Playtime",TimeFormatting.Format(stats.Playtime))),
+                    stats.FastestWinTime>=0?StatsLine("ENTRY_CHAR_PLAYTIME.bottom",("FastestWin",TimeFormatting.Format(stats.FastestWinTime))):"",
+                    stats.MaxAscension>0?StatsLine("ENTRY_CHAR_WIN_LOSS.top",("Amount",stats.MaxAscension)):"",
+                    StatsLine("ENTRY_CHAR_WIN_LOSS.bottom",("Wins",stats.TotalWins),("Losses",stats.TotalLosses)),
+                    StatsLine("ENTRY_CHAR_STREAK.top",("Amount",stats.CurrentWinStreak)),
+                    StatsLine("ENTRY_CHAR_STREAK.bottom",("Amount",stats.BestWinStreak))
+                }.Where(line=>!string.IsNullOrEmpty(line)).ToArray()
+            };
+        }).Where(item=>item!=null).ToArray();
+        return new {overall,characters};
+    }
+
+    private object[] RunHistoryViews(SaveManager saveManager)
+    {
+        var rows=new List<object>();
+        foreach(string name in saveManager.GetAllRunHistoryNames().AsEnumerable().Reverse())
+        {
+            var loaded=saveManager.LoadRunHistory(name);
+            if(!loaded.Success||loaded.SaveData==null) continue;
+            RunHistory history=loaded.SaveData;
+            string[] characters=history.Players.Select(p=>ModelDb.GetByIdOrNull<CharacterModel>(p.Character)).OfType<CharacterModel>().Select(character=>Text(character.Title)).ToArray();
+            rows.Add(new
+            {
+                id=name,
+                result=history.Win?"胜利":history.WasAbandoned?"放弃":"败北",
+                characters,
+                ascension=history.Ascension,
+                seed=history.Seed,
+                date=DateTimeOffset.FromUnixTimeSeconds(history.StartTime).ToLocalTime().ToString("yyyy-MM-dd HH:mm",System.Globalization.CultureInfo.CurrentCulture),
+                duration=TimeFormatting.Format(history.RunTime),
+                build=history.BuildId
+            });
+        }
+        return rows.ToArray();
+    }
+
     private void Publish()
     {
         try
@@ -1874,12 +2394,17 @@ public partial class Main : Node, ICardSelector
             bool hasRunSave=HasPendingRunSave();
             bool canAbandonRun=run!=null&&RM.IsInProgress&&!run.IsGameOver&&!Dead&&!gameWon;
             int discoveredEpochCount=saveManager.GetDiscoveredEpochCount();
-            bool nativeTimelineForced=!DebugSettings.DevSkip&&discoveredEpochCount>0&&!hasRunSave;
             bool runEnded=run==null||failed||Dead||Won;
-            object[] timelineCharacterUnlocks=!hasRunSave&&runEnded?CharacterEpochUnlockViews():[];
-            bool timelineCharacterUnlockPending=nativeTimelineForced&&timelineCharacterUnlocks.Length>0;
-            bool timelineVisible=nativeTimelineForced||saveManager.Progress.Epochs.Count>1;
-            bool timelineEnabled=timelineCharacterUnlockPending;
+            object[] timelineCharacterUnlocks=!hasRunSave&&runEnded?TimelineRevealableViews():[];
+            bool nativeTimelineForced=!DebugSettings.DevSkip&&discoveredEpochCount>0&&!hasRunSave;
+            bool timelineCharacterUnlockPending=timelineCharacterUnlocks.Length>0;
+            bool timelineForced=nativeTimelineForced&&timelineCharacterUnlockPending;
+            bool timelineVisible=saveManager.Progress.Epochs.Count>0;
+            bool timelineEnabled=timelineForced||(!timelineForced&&saveManager.Progress.Epochs.Count>1&&saveManager.IsEpochRevealed<NeowEpoch>());
+            object[] timelineEpochs=(timelineOpen||timelineForced)
+                ?(object[])(timelineDataCache??=TimelineViews()):[];
+            object? compendiumData=compendiumOpen
+                ?(compendiumDataCache??=CompendiumViews(saveManager)):null;
             bool dailyUnlocked=saveManager.IsEpochRevealed<DailyRunEpoch>();
             bool customUnlocked=saveManager.IsEpochRevealed<CustomAndSeedsEpoch>();
             var pcs=player?.PlayerCombatState;
@@ -1917,22 +2442,22 @@ public partial class Main : Node, ICardSelector
                     continueVisible=hasRunSave,
                     abandonVisible=hasRunSave,
                     singleplayerVisible=!hasRunSave,
-                    // Preserve the original gate when a supported character
-                    // unlock is waiting, and let the timeline entry handle it.
-                    // Other unimplemented timeline nodes do not deadlock this
-                    // singleplayer-only web menu.
-                    singleplayerEnabled=!hasRunSave&&!timelineCharacterUnlockPending,
-                    multiplayerEnabled=!nativeTimelineForced,
+                    singleplayerEnabled=!hasRunSave&&!timelineForced,
+                    multiplayerEnabled=!timelineForced,
                     compendiumVisible=saveManager.IsCompendiumAvailable(),
-                    compendiumEnabled=!nativeTimelineForced,
+                    compendiumEnabled=!timelineForced,
                     timelineVisible,
                     timelineEnabled,
-                    timelineForced=timelineCharacterUnlockPending,
+                    timelineForced,
                     timelineCharacterUnlockPending,
+                    timelineOpen,
+                    compendiumOpen,
                     settingsEnabled=true,
                     quitEnabled=true
                 },
                 timelineCharacterUnlocks,
+                timelineEpochs,
+                compendiumData,
                 mainMenuLabels=new
                 {
                     continueGame=Text(new LocString("main_menu_ui","CONTINUE")),
@@ -1974,7 +2499,7 @@ public partial class Main : Node, ICardSelector
                 },
                 characters=CharacterMenuViews(),
                 seed,act=run==null?0:run.CurrentActIndex+1,actCount=run?.Acts.Count??0,floor=run?.TotalFloor??0,location=run==null?"旅程尚未开始":Text(run.Act.Title),
-                player=player==null?null:new {name=CharacterName(player.Character),character=CharacterKey(player.Character),hp=player.Creature.CurrentHp,maxHp=player.Creature.MaxHp,block=player.Creature.Block,gold=player.Gold,energy=pcs?.Energy??0,maxEnergy=pcs?.MaxEnergy??player.MaxEnergy,turn=pcs?.TurnNumber??0,deck=player.Deck.Cards.Count,draw=pcs?.DrawPile.Cards.Count??0,discard=pcs?.DiscardPile.Cards.Count??0,exhaust=pcs?.ExhaustPile.Cards.Count??0,stars=pcs?.Stars,showStarCounter=(CM.IsInProgress||CM.IsStarting)&&pcs!=null&&(player.Character.ShouldAlwaysShowStarCounter||pcs.Stars>0),starTitle=Text(new LocString("static_hover_tips","STAR_COUNT.title")),starDescription=StarCounterDescription(),powers=player.Creature.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(),relics=player.Relics.Select(r=>new{name=Text(r.Title),description=Text(r.DynamicDescription)}).ToArray(),potions=player.PotionSlots.Select(p=>p==null?"空槽":Text(p.Title)).ToArray()},
+                player=player==null?null:new {name=CharacterName(player.Character),character=CharacterKey(player.Character),hp=player.Creature.CurrentHp,maxHp=player.Creature.MaxHp,block=player.Creature.Block,gold=player.Gold,energy=pcs?.Energy??0,maxEnergy=pcs?.MaxEnergy??player.MaxEnergy,turn=pcs?.TurnNumber??0,deck=player.Deck.Cards.Count,deckCards=player.Deck.Cards.Select(CardPreviewView).ToArray(),draw=pcs?.DrawPile.Cards.Count??0,discard=pcs?.DiscardPile.Cards.Count??0,exhaust=pcs?.ExhaustPile.Cards.Count??0,stars=pcs?.Stars,showStarCounter=(CM.IsInProgress||CM.IsStarting)&&pcs!=null&&(player.Character.ShouldAlwaysShowStarCounter||pcs.Stars>0),starTitle=Text(new LocString("static_hover_tips","STAR_COUNT.title")),starDescription=StarCounterDescription(),powers=player.Creature.Powers.Select(p=>Text(p.Title)+" "+p.Amount).ToArray(),powerDetails=PowerViews(player.Creature),relics=player.Relics.Select(r=>new{name=Text(r.Title),description=Text(r.DynamicDescription)}).ToArray(),potions=PotionViews()},
                 hand=pcs?.Hand.Cards.Select((card,index)=>CardView(card,index)).ToArray()??[],
                 combat=CombatView(),
                 enemies=enemyViews,
@@ -1996,14 +2521,16 @@ public partial class Main : Node, ICardSelector
         public abstract void Cancel();
     }
 
-    private sealed class CardListChoice(List<CardModel> options,int minSelect,int maxSelect,bool cancelable):PendingChoice
+    private sealed class CardListChoice(List<CardModel> options,int minSelect,int maxSelect,bool cancelable,bool upgradePreview):PendingChoice
     {
+        private object[]? cachedViews;
         public List<CardModel> Options {get;}=options;
         public int MinSelect {get;}=minSelect;
         public int MaxSelect {get;}=maxSelect;
         public bool Cancelable {get;}=cancelable;
+        public bool UpgradePreview {get;}=upgradePreview;
         public TaskCompletionSource<IEnumerable<CardModel>> Completion {get;}=new();
-        public override object[] Views(Main owner)=>Options.Select((card,index)=>owner.CardView(card,index,$"choose {index+1}",MaxSelect>1)).ToArray();
+        public override object[] Views(Main owner)=>cachedViews??=Options.Select((card,index)=>owner.CardView(card,index,$"choose {index+1}",MaxSelect>1,UpgradePreview)).ToArray();
         public override void Cancel()=>Completion.TrySetCanceled();
     }
 
